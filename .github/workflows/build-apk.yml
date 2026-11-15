@@ -23,8 +23,9 @@ jobs:
       - name: Create Flutter project if needed
         run: |
           if [ ! -f pubspec.yaml ]; then
-            flutter create --platforms=android,ios,web .
+            flutter create --project-name multiwall --platforms=android,ios,web .
           fi
+          
 
       - name: Get dependencies
         run: flutter pub get
