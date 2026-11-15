@@ -1,5 +1,5 @@
 
-name: Build multiwall Android APK
+name: Build MultiWall Android APK
 
 on:
   workflow_dispatch:
