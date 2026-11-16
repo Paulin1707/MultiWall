@@ -10,22 +10,44 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const String supabaseUrl =
     'https://cerzkniqycnggirvfzqv.supabase.co';
 
-const String supabasePublishableKey =
-    'sb_publishable_zxM_EQXh9qFQn88dbTAT7w_a9auV8Iu';
-
-// =====================================================
-// DEMARRAGE
-// =====================================================
+// Remplace cette valeur par ta clé sb_publishable complète.
+const String supabaseKey = 'sb_publishable_zxM_EQXh9qFQn88dbTAT7w_a9auV8Iu';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
     url: supabaseUrl,
-    anonKey: supabasePublishableKey,
+    anonKey: supabaseKey,
   );
 
   runApp(const MultiWallApp());
+}
+
+final SupabaseClient supabase = Supabase.instance.client;
+
+// =====================================================
+// OUTILS
+// =====================================================
+
+Map<String, dynamic> firstMap(dynamic result) {
+  if (result is List && result.isNotEmpty) {
+    return Map<String, dynamic>.from(result.first as Map);
+  }
+
+  if (result is Map) {
+    return Map<String, dynamic>.from(result);
+  }
+
+  return {};
+}
+
+String readString(Map<String, dynamic> data, List<String> keys) {
+  for (final key in keys) {
+    final value = data[key];
+    if (value != null) return value.toString();
+  }
+  return '';
 }
 
 // =====================================================
@@ -38,14 +60,11 @@ class MultiWallApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MultiWall',
       debugShowCheckedModeBanner: false,
+      title: 'MultiWall',
       theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF071426),
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF168BFF),
-          brightness: Brightness.dark,
+          seedColor: Colors.blue,
         ),
         useMaterial3: true,
       ),
@@ -55,7 +74,7 @@ class MultiWallApp extends StatelessWidget {
 }
 
 // =====================================================
-// PAGE D'ACCUEIL
+// ACCUEIL
 // =====================================================
 
 class HomePage extends StatefulWidget {
@@ -69,39 +88,17 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController codeController =
       TextEditingController();
 
-  final TextEditingController deviceController =
-      TextEditingController(text: 'Mon appareil');
-
   String displayMode = 'mirror';
   String connectionType = 'both';
-
   bool loading = false;
-
-  SupabaseClient get supabase =>
-      Supabase.instance.client;
 
   @override
   void dispose() {
     codeController.dispose();
-    deviceController.dispose();
     super.dispose();
   }
 
-  void showMessage(String message) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  // ===================================================
-  // CREER UNE SESSION
-  // ===================================================
-
   Future<void> createSession() async {
-    if (loading) return;
-
     setState(() => loading = true);
 
     try {
@@ -110,12 +107,31 @@ class _HomePageState extends State<HomePage> {
         params: {
           'p_display_mode': displayMode,
           'p_connection_type': connectionType,
-          'p_max_participants': 10,
+          'p_max_participants': 20,
         },
       );
 
-      final data =
-          Map<String, dynamic>.from(result as Map);
+      final data = firstMap(result);
+
+      final sessionId = readString(
+        data,
+        ['session_id', 'id'],
+      );
+
+      final code = readString(data, ['code']);
+
+      final ownerToken = readString(
+        data,
+        ['owner_token'],
+      );
+
+      if (sessionId.isEmpty ||
+          code.isEmpty ||
+          ownerToken.isEmpty) {
+        throw Exception(
+          'Les informations de la session sont incomplètes.',
+        );
+      }
 
       if (!mounted) return;
 
@@ -123,40 +139,24 @@ class _HomePageState extends State<HomePage> {
         context,
         MaterialPageRoute(
           builder: (_) => SessionPage(
-            sessionId: data['session_id'].toString(),
-            code: data['code'].toString(),
-            ownerToken: data['owner_token'].toString(),
+            sessionId: sessionId,
+            code: code,
+            ownerToken: ownerToken,
           ),
         ),
       );
-    } on PostgrestException catch (e) {
-      showMessage('Erreur Supabase : ${e.message}');
     } catch (e) {
-      showMessage('Impossible de créer la session : $e');
+      showMessage('Erreur : $e');
     } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
+      if (mounted) setState(() => loading = false);
     }
   }
 
-  // ===================================================
-  // REJOINDRE UNE SESSION
-  // ===================================================
-
   Future<void> joinSession() async {
-    if (loading) return;
-
     final code = codeController.text.trim();
-    final deviceName = deviceController.text.trim();
 
     if (code.length != 6) {
       showMessage('Entre un code de 6 chiffres.');
-      return;
-    }
-
-    if (deviceName.isEmpty) {
-      showMessage('Entre le nom de ton appareil.');
       return;
     }
 
@@ -167,202 +167,481 @@ class _HomePageState extends State<HomePage> {
         'request_multiwall_join',
         params: {
           'p_code': code,
-          'p_device_name': deviceName,
+          'p_device_name': 'Appareil Android',
           'p_device_type': 'phone',
         },
       );
 
-      final data =
-          Map<String, dynamic>.from(result as Map);
+      final data = firstMap(result);
+
+      final status = readString(data, ['status']);
 
       if (!mounted) return;
 
-      showDialog(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Demande envoyée'),
-          content: Text(
-            'Ta demande a été envoyée au propriétaire '
-            'de la session.\n\nStatut : ${data['status']}',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext),
-              child: const Text('Compris'),
-            ),
-          ],
-        ),
+      showMessage(
+        status.isEmpty
+            ? 'Demande de connexion envoyée.'
+            : 'Demande envoyée : $status',
       );
-    } on PostgrestException catch (e) {
-      showMessage('Erreur : ${e.message}');
     } catch (e) {
-      showMessage('Impossible de rejoindre : $e');
+      showMessage('Erreur de connexion : $e');
     } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
+      if (mounted) setState(() => loading = false);
     }
   }
 
-  // ===================================================
-  // INTERFACE D'ACCUEIL
-  // ===================================================
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'MultiWall',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: const Text('MultiWall'),
         centerTitle: true,
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 25),
-
-              const Icon(
-                Icons.connected_tv,
-                size: 75,
-                color: Color(0xFF168BFF),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(
+              Icons.connected_tv,
+              size: 75,
+              color: Colors.blue,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Partagez vos écrans avec MultiWall',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
+            ),
+            const SizedBox(height: 30),
 
-              const SizedBox(height: 15),
+            const Text(
+              'Mode d’affichage',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
 
-              const Text(
-                'Votre écran, partout.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 25,
-                  fontWeight: FontWeight.bold,
+            RadioListTile<String>(
+              title: const Text('Miroir : même écran partout'),
+              value: 'mirror',
+              groupValue: displayMode,
+              onChanged: (value) {
+                setState(() => displayMode = value!);
+              },
+            ),
+
+            RadioListTile<String>(
+              title: const Text('Mur vidéo : écran réparti'),
+              value: 'video_wall',
+              groupValue: displayMode,
+              onChanged: (value) {
+                setState(() => displayMode = value!);
+              },
+            ),
+
+            const Divider(height: 30),
+
+            const Text(
+              'Type de connexion',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+
+            RadioListTile<String>(
+              title: const Text('Wi-Fi local et Internet'),
+              value: 'both',
+              groupValue: connectionType,
+              onChanged: (value) {
+                setState(() => connectionType = value!);
+              },
+            ),
+
+            RadioListTile<String>(
+              title: const Text('Wi-Fi local uniquement'),
+              value: 'local',
+              groupValue: connectionType,
+              onChanged: (value) {
+                setState(() => connectionType = value!);
+              },
+            ),
+
+            RadioListTile<String>(
+              title: const Text('Internet uniquement'),
+              value: 'internet',
+              groupValue: connectionType,
+              onChanged: (value) {
+                setState(() => connectionType = value!);
+              },
+            ),
+
+            const SizedBox(height: 15),
+
+            ElevatedButton.icon(
+              onPressed: loading ? null : createSession,
+              icon: const Icon(Icons.add),
+              label: const Text('Créer une session'),
+            ),
+
+            const SizedBox(height: 30),
+
+            const Text(
+              'Rejoindre une session',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: codeController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(
+                labelText: 'Code de session',
+                hintText: 'Exemple : 123456',
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            ElevatedButton.icon(
+              onPressed: loading ? null : joinSession,
+              icon: const Icon(Icons.login),
+              label: const Text('Rejoindre'),
+            ),
+
+            if (loading)
+              const Padding(
+                padding: EdgeInsets.all(15),
+                child: Center(
+                  child: CircularProgressIndicator(),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-              const SizedBox(height: 8),
+// =====================================================
+// GESTION DE SESSION
+// =====================================================
 
-              const Text(
-                'Partagez votre écran sur plusieurs appareils.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70),
-              ),
+class SessionPage extends StatefulWidget {
+  final String sessionId;
+  final String code;
+  final String ownerToken;
 
-              const SizedBox(height: 35),
+  const SessionPage({
+    super.key,
+    required this.sessionId,
+    required this.code,
+    required this.ownerToken,
+  });
 
-              const Text(
-                'Mode d’affichage',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+  @override
+  State<SessionPage> createState() => _SessionPageState();
+}
 
-              const SizedBox(height: 10),
+class _SessionPageState extends State<SessionPage> {
+  List<Map<String, dynamic>> participants = [];
+  bool loading = false;
 
-              DropdownButtonFormField<String>(
-                value: displayMode,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  prefixIcon:
-                      Icon(Icons.screenshot_monitor),
-                ),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'mirror',
-                    child: Text(
-                      'Miroir - même écran partout',
+  @override
+  void initState() {
+    super.initState();
+    loadParticipants();
+  }
+
+  Future<void> loadParticipants() async {
+    setState(() => loading = true);
+
+    try {
+      final result = await supabase.rpc(
+        'get_multiwall_participants',
+        params: {
+          'p_session_id': widget.sessionId,
+          'p_owner_token': widget.ownerToken,
+        },
+      );
+
+      final rows = result as List;
+
+      if (!mounted) return;
+
+      setState(() {
+        participants = rows
+            .map(
+              (item) => Map<String, dynamic>.from(item as Map),
+            )
+            .toList();
+      });
+    } catch (e) {
+      showMessage('Erreur de chargement : $e');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> decideParticipant(
+    Map<String, dynamic> participant,
+    bool accept,
+  ) async {
+    final participantId = readString(
+      participant,
+      ['participant_id', 'id'],
+    );
+
+    if (participantId.isEmpty) {
+      showMessage('Identifiant du participant introuvable.');
+      return;
+    }
+
+    try {
+      await supabase.rpc(
+        'decide_multiwall_join',
+        params: {
+          'p_session_id': widget.sessionId,
+          'p_owner_token': widget.ownerToken,
+          'p_participant_id': participantId,
+          'p_accept': accept,
+        },
+      );
+
+      showMessage(
+        accept
+            ? 'Participant accepté.'
+            : 'Demande refusée.',
+      );
+
+      await loadParticipants();
+    } catch (e) {
+      showMessage('Erreur : $e');
+    }
+  }
+
+  Future<void> closeSession() async {
+    try {
+      await supabase.rpc(
+        'close_multiwall_session',
+        params: {
+          'p_session_id': widget.sessionId,
+          'p_owner_token': widget.ownerToken,
+        },
+      );
+
+      if (!mounted) return;
+
+      Navigator.pop(context);
+    } catch (e) {
+      showMessage('Impossible de fermer la session : $e');
+    }
+  }
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = participants.where(
+      (p) => p['status'] == 'pending',
+    ).toList();
+
+    final accepted = participants.where(
+      (p) => p['status'] == 'accepted',
+    ).toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Ma session MultiWall'),
+        actions: [
+          IconButton(
+            onPressed: loading ? null : loadParticipants,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Actualiser',
+          ),
+        ],
+      ),
+
+      body: RefreshIndicator(
+        onRefresh: loadParticipants,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    const Text(
+                      'CODE DE SESSION',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  DropdownMenuItem(
-                    value: 'video_wall',
-                    child: Text(
-                      'Mur vidéo - écran réparti',
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.code,
+                      style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 5,
+                      ),
                     ),
-                  ),
-                ],
-                onChanged: loading
-                    ? null
-                    : (value) {
-                        if (value != null) {
-                          setState(() {
-                            displayMode = value;
-                          });
-                        }
+                    const SizedBox(height: 10),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Clipboard.setData(
+                          ClipboardData(text: widget.code),
+                        );
+                        showMessage('Code copié.');
                       },
-              ),
-
-              const SizedBox(height: 20),
-
-              const Text(
-                'Type de connexion',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-
-              const SizedBox(height: 10),
-
-              DropdownButtonFormField<String>(
-                value: connectionType,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.wifi),
+                      icon: const Icon(Icons.copy),
+                      label: const Text('Copier le code'),
+                    ),
+                  ],
                 ),
-                items: const [
-                  DropdownMenuItem(
-                    value: 'both',
-                    child: Text('Wi-Fi local et Internet'),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            Text(
+              'Demandes en attente (${pending.length})',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            if (pending.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Text('Aucune demande en attente.'),
+              ),
+
+            ...pending.map((participant) {
+              final name = readString(
+                participant,
+                ['device_name'],
+              );
+
+              final type = readString(
+                participant,
+                ['device_type'],
+              );
+
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.devices),
+                  title: Text(
+                    name.isEmpty ? 'Appareil inconnu' : name,
                   ),
-                  DropdownMenuItem(
-                    value: 'local',
-                    child: Text('Wi-Fi local uniquement'),
+                  subtitle: Text(type),
+                  trailing: Wrap(
+                    spacing: 4,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          decideParticipant(participant, true);
+                        },
+                        icon: const Icon(
+                          Icons.check_circle,
+                          color: Colors.green,
+                        ),
+                        tooltip: 'Accepter',
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          decideParticipant(participant, false);
+                        },
+                        icon: const Icon(
+                          Icons.cancel,
+                          color: Colors.red,
+                        ),
+                        tooltip: 'Refuser',
+                      ),
+                    ],
                   ),
-                  DropdownMenuItem(
-                    value: 'internet',
-                    child: Text('Internet'),
+                ),
+              );
+            }),
+
+            const SizedBox(height: 20),
+
+            Text(
+              'Appareils connectés (${accepted.length})',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+
+            if (accepted.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Text('Aucun appareil accepté pour le moment.'),
+              ),
+
+            ...accepted.map((participant) {
+              final name = readString(
+                participant,
+                ['device_name'],
+              );
+
+              return Card(
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.connected_tv,
+                    color: Colors.green,
                   ),
-                ],
-                onChanged: loading
-                    ? null
-                    : (value) {
-                        if (value != null) {
-                          setState(() {
-                            connectionType = value;
-                          });
-                        }
-                      },
-              ),
-
-              const SizedBox(height: 20),
-
-              FilledButton.icon(
-                onPressed: loading ? null : createSession,
-                icon: const Icon(Icons.add_link),
-                label: Text(
-                  loading
-                      ? 'Connexion...'
-                      : 'Créer une session',
+                  title: Text(
+                    name.isEmpty ? 'Appareil connecté' : name,
+                  ),
+                  subtitle: const Text('Connecté'),
                 ),
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.all(17),
-                ),
+              );
+            }),
+
+            const SizedBox(height: 30),
+
+            OutlinedButton.icon(
+              onPressed: loading ? null : loadParticipants,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Actualiser les participants'),
+            ),
+
+            const SizedBox(height: 12),
+
+            ElevatedButton.icon(
+              onPressed: closeSession,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
               ),
-
-              const SizedBox(height: 35),
-
-              const Divider(color: Colors.white24),
-
-              const SizedBox(height: 20),
-
-              const Text(
-                'Rejoindre une session',
-                style: TextStyle(
-                  fontSize: 19,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              const SizedBox(height: 15),
+              icon: const Icon(Icons.close),
+              label: const Text('Fermer la session'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+const SizedBox(height: 15),
 
               TextField(
                 controller: codeController,
