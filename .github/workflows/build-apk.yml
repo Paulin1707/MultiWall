@@ -52,11 +52,11 @@ jobs:
           if "android.permission.INTERNET" not in s:
               s = s.replace("<application", permission + "    <application", 1)
 
-          extra_permission = '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\\n'
+          extra_permission = '    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n'
           if "android.permission.MODIFY_AUDIO_SETTINGS" not in s:
               s = s.replace("<application", extra_permission + "    <application", 1)
 
-          service = '        <service android:name="com.cloudwebrtc.webrtc.GetUserMediaImpl" android:foregroundServiceType="mediaProjection" />\\n'
+          service = '        <service android:name="com.cloudwebrtc.webrtc.GetUserMediaImpl" android:foregroundServiceType="mediaProjection" />\n'
           if "com.cloudwebrtc.webrtc.GetUserMediaImpl" not in s:
               s = s.replace("</application>", service + "    </application>", 1)
 
