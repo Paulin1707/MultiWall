@@ -25,7 +25,9 @@ jobs:
           if [ ! -f pubspec.yaml ]; then
             flutter create --project-name multiwall --platforms=android,ios,web .
           fi
-          
+
+      - name: Add Supabase dependency
+        run: flutter pub add supabase_flutter
 
       - name: Get dependencies
         run: flutter pub get
@@ -38,4 +40,3 @@ jobs:
         with:
           name: MultiWall-Android
           path: build/app/outputs/flutter-apk/app-release.apk
-          
