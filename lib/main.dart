@@ -10,8 +10,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const String supabaseUrl =
     'https://cerzkniqycnggirvfzqv.supabase.co';
 
-// Remplace cette valeur par ta clé sb_publishable complète.
-const String supabaseKey = 'sb_publishable_zxM_EQXh9qFQn88dbTAT7w_a9auV8Iu';
+// Conserve ici ta clé sb_publishable actuelle.
+const String supabaseKey = 'COLLE_TA_CLE_SB_PUBLISHABLE_ICI';
+
+const Color navy = Color(0xFF081426);
+const Color panel = Color(0xFF12233D);
+const Color blue = Color(0xFF2878FF);
+const Color cyan = Color(0xFF43D9FF);
+const Color muted = Color(0xFF9BAEC8);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,12 +69,104 @@ class MultiWallApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'MultiWall',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-        ),
         useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: navy,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: blue,
+          brightness: Brightness.dark,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: navy,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: panel,
+          hintStyle: const TextStyle(color: muted),
+          labelStyle: const TextStyle(color: muted),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: Color(0xFF263D5D)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: cyan, width: 1.5),
+          ),
+        ),
       ),
       home: const HomePage(),
+    );
+  }
+}
+
+// =====================================================
+// COMPOSANTS GRAPHIQUES
+// =====================================================
+
+class BrandLogo extends StatelessWidget {
+  const BrandLogo({super.key, this.size = 48});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        gradient: const LinearGradient(
+          colors: [blue, cyan],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Icon(
+        Icons.connected_tv_rounded,
+        color: Colors.white,
+        size: size * 0.58,
+      ),
+    );
+  }
+}
+
+class SectionTitle extends StatelessWidget {
+  const SectionTitle({
+    super.key,
+    required this.title,
+    this.subtitle,
+  });
+
+  final String title;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle!,
+            style: const TextStyle(color: muted, fontSize: 12),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -98,6 +196,18 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: panel,
+      ),
+    );
+  }
+
   Future<void> createSession() async {
     setState(() => loading = true);
 
@@ -113,24 +223,14 @@ class _HomePageState extends State<HomePage> {
 
       final data = firstMap(result);
 
-      final sessionId = readString(
-        data,
-        ['session_id', 'id'],
-      );
-
+      final sessionId = readString(data, ['session_id', 'id']);
       final code = readString(data, ['code']);
-
-      final ownerToken = readString(
-        data,
-        ['owner_token'],
-      );
+      final ownerToken = readString(data, ['owner_token']);
 
       if (sessionId.isEmpty ||
           code.isEmpty ||
           ownerToken.isEmpty) {
-        throw Exception(
-          'Les informations de la session sont incomplètes.',
-        );
+        throw Exception('Informations de session incomplètes.');
       }
 
       if (!mounted) return;
@@ -173,7 +273,6 @@ class _HomePageState extends State<HomePage> {
       );
 
       final data = firstMap(result);
-
       final status = readString(data, ['status']);
 
       if (!mounted) return;
@@ -190,454 +289,352 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void showMessage(String message) {
-    if (!mounted) return;
+  Widget modeCard({
+    required String value,
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    final selected = displayMode == value;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('MultiWall'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(
-              Icons.connected_tv,
-              size: 75,
-              color: Colors.blue,
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => setState(() => displayMode = value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF183D70) : panel,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected ? blue : const Color(0xFF263D5D),
+              width: selected ? 1.8 : 1,
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Partagez vos écrans avec MultiWall',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            const Text(
-              'Mode d’affichage',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-
-            RadioListTile<String>(
-              title: const Text('Miroir : même écran partout'),
-              value: 'mirror',
-              groupValue: displayMode,
-              onChanged: (value) {
-                setState(() => displayMode = value!);
-              },
-            ),
-
-            RadioListTile<String>(
-              title: const Text('Mur vidéo : écran réparti'),
-              value: 'video_wall',
-              groupValue: displayMode,
-              onChanged: (value) {
-                setState(() => displayMode = value!);
-              },
-            ),
-
-            const Divider(height: 30),
-
-            const Text(
-              'Type de connexion',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-
-            RadioListTile<String>(
-              title: const Text('Wi-Fi local et Internet'),
-              value: 'both',
-              groupValue: connectionType,
-              onChanged: (value) {
-                setState(() => connectionType = value!);
-              },
-            ),
-
-            RadioListTile<String>(
-              title: const Text('Wi-Fi local uniquement'),
-              value: 'local',
-              groupValue: connectionType,
-              onChanged: (value) {
-                setState(() => connectionType = value!);
-              },
-            ),
-
-            RadioListTile<String>(
-              title: const Text('Internet uniquement'),
-              value: 'internet',
-              groupValue: connectionType,
-              onChanged: (value) {
-                setState(() => connectionType = value!);
-              },
-            ),
-
-            const SizedBox(height: 15),
-
-            ElevatedButton.icon(
-              onPressed: loading ? null : createSession,
-              icon: const Icon(Icons.add),
-              label: const Text('Créer une session'),
-            ),
-
-            const SizedBox(height: 30),
-
-            const Text(
-              'Rejoindre une session',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 10),
-
-            TextField(
-              controller: codeController,
-              keyboardType: TextInputType.number,
-              maxLength: 6,
-              decoration: const InputDecoration(
-                labelText: 'Code de session',
-                hintText: 'Exemple : 123456',
-                border: OutlineInputBorder(),
-              ),
-            ),
-
-            ElevatedButton.icon(
-              onPressed: loading ? null : joinSession,
-              icon: const Icon(Icons.login),
-              label: const Text('Rejoindre'),
-            ),
-
-            if (loading)
-              const Padding(
-                padding: EdgeInsets.all(15),
-                child: Center(
-                  child: CircularProgressIndicator(),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: selected ? cyan : muted, size: 27),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-          ],
+              const SizedBox(height: 5),
+              Text(
+                description,
+                style: const TextStyle(
+                  color: muted,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Icon(
+                selected
+                    ? Icons.check_circle
+                    : Icons.circle_outlined,
+                color: selected ? cyan : muted,
+                size: 18,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
-}
 
-// =====================================================
-// GESTION DE SESSION
-// =====================================================
+  Widget connectionChoice(String value, String label) {
+    final selected = connectionType == value;
 
-class SessionPage extends StatefulWidget {
-  final String sessionId;
-  final String code;
-  final String ownerToken;
-
-  const SessionPage({
-    super.key,
-    required this.sessionId,
-    required this.code,
-    required this.ownerToken,
-  });
-
-  @override
-  State<SessionPage> createState() => _SessionPageState();
-}
-
-class _SessionPageState extends State<SessionPage> {
-  List<Map<String, dynamic>> participants = [];
-  bool loading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    loadParticipants();
-  }
-
-  Future<void> loadParticipants() async {
-    setState(() => loading = true);
-
-    try {
-      final result = await supabase.rpc(
-        'get_multiwall_participants',
-        params: {
-          'p_session_id': widget.sessionId,
-          'p_owner_token': widget.ownerToken,
-        },
-      );
-
-      final rows = result as List;
-
-      if (!mounted) return;
-
-      setState(() {
-        participants = rows
-            .map(
-              (item) => Map<String, dynamic>.from(item as Map),
-            )
-            .toList();
-      });
-    } catch (e) {
-      showMessage('Erreur de chargement : $e');
-    } finally {
-      if (mounted) setState(() => loading = false);
-    }
-  }
-
-  Future<void> decideParticipant(
-    Map<String, dynamic> participant,
-    bool accept,
-  ) async {
-    final participantId = readString(
-      participant,
-      ['participant_id', 'id'],
-    );
-
-    if (participantId.isEmpty) {
-      showMessage('Identifiant du participant introuvable.');
-      return;
-    }
-
-    try {
-      await supabase.rpc(
-        'decide_multiwall_join',
-        params: {
-          'p_session_id': widget.sessionId,
-          'p_owner_token': widget.ownerToken,
-          'p_participant_id': participantId,
-          'p_accept': accept,
-        },
-      );
-
-      showMessage(
-        accept
-            ? 'Participant accepté.'
-            : 'Demande refusée.',
-      );
-
-      await loadParticipants();
-    } catch (e) {
-      showMessage('Erreur : $e');
-    }
-  }
-
-  Future<void> closeSession() async {
-    try {
-      await supabase.rpc(
-        'close_multiwall_session',
-        params: {
-          'p_session_id': widget.sessionId,
-          'p_owner_token': widget.ownerToken,
-        },
-      );
-
-      if (!mounted) return;
-
-      Navigator.pop(context);
-    } catch (e) {
-      showMessage('Impossible de fermer la session : $e');
-    }
-  }
-
-  void showMessage(String message) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) {
+        setState(() => connectionType = value);
+      },
+      selectedColor: blue,
+      backgroundColor: panel,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : muted,
+        fontWeight: FontWeight.w600,
+      ),
+      side: BorderSide(
+        color: selected ? cyan : const Color(0xFF263D5D),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final pending = participants.where(
-      (p) => p['status'] == 'pending',
-    ).toList();
-
-    final accepted = participants.where(
-      (p) => p['status'] == 'accepted',
-    ).toList();
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ma session MultiWall'),
-        actions: [
-          IconButton(
-            onPressed: loading ? null : loadParticipants,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Actualiser',
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [navy, Color(0xFF0B1D36), navy],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
-      ),
-
-      body: RefreshIndicator(
-        onRefresh: loadParticipants,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 30),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    const Text(
-                      'CODE DE SESSION',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
+                    const BrandLogo(),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'MultiWall',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          Text(
+                            'VOTRE ÉCRAN, PARTOUT.',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: cyan,
+                              letterSpacing: 1.8,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      widget.code,
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 5,
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: panel,
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Clipboard.setData(
-                          ClipboardData(text: widget.code),
-                        );
-                        showMessage('Code copié.');
-                      },
-                      icon: const Icon(Icons.copy),
-                      label: const Text('Copier le code'),
+                      child: const Icon(
+                        Icons.cast_connected,
+                        color: cyan,
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ),
 
-            const SizedBox(height: 20),
+                const SizedBox(height: 28),
 
-            Text(
-              'Demandes en attente (${pending.length})',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            if (pending.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(12),
-                child: Text('Aucune demande en attente.'),
-              ),
-
-            ...pending.map((participant) {
-              final name = readString(
-                participant,
-                ['device_name'],
-              );
-
-              final type = readString(
-                participant,
-                ['device_type'],
-              );
-
-              return Card(
-                child: ListTile(
-                  leading: const Icon(Icons.devices),
-                  title: Text(
-                    name.isEmpty ? 'Appareil inconnu' : name,
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF164B91), Color(0xFF102747)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    border: Border.all(
+                      color: const Color(0xFF367DD1),
+                    ),
                   ),
-                  subtitle: Text(type),
-                  trailing: Wrap(
-                    spacing: 4,
+                  child: Stack(
                     children: [
-                      IconButton(
-                        onPressed: () {
-                          decideParticipant(participant, true);
-                        },
-                        icon: const Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
+                      const Positioned(
+                        right: -10,
+                        top: 5,
+                        child: Icon(
+                          Icons.connected_tv_rounded,
+                          size: 110,
+                          color: Color(0x223DD9FF),
                         ),
-                        tooltip: 'Accepter',
                       ),
-                      IconButton(
-                        onPressed: () {
-                          decideParticipant(participant, false);
-                        },
-                        icon: const Icon(
-                          Icons.cancel,
-                          color: Colors.red,
-                        ),
-                        tooltip: 'Refuser',
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'LE PARTAGE SANS LIMITES',
+                            style: TextStyle(
+                              color: cyan,
+                              fontSize: 10,
+                              letterSpacing: 1.5,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Diffusez autrement.',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 27,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 9),
+                          const Text(
+                            'Transformez vos appareils en un espace '
+                            'd’affichage connecté.',
+                            style: TextStyle(
+                              color: Color(0xFFD1E2F8),
+                              height: 1.5,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.devices,
+                                color: cyan,
+                                size: 17,
+                              ),
+                              const SizedBox(width: 7),
+                              Text(
+                                'Téléphones • Tablettes • Ordinateurs',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-              );
-            }),
 
-            const SizedBox(height: 20),
+                const SizedBox(height: 28),
 
-            Text(
-              'Appareils connectés (${accepted.length})',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            if (accepted.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(12),
-                child: Text('Aucun appareil accepté pour le moment.'),
-              ),
-
-            ...accepted.map((participant) {
-              final name = readString(
-                participant,
-                ['device_name'],
-              );
-
-              return Card(
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.connected_tv,
-                    color: Colors.green,
-                  ),
-                  title: Text(
-                    name.isEmpty ? 'Appareil connecté' : name,
-                  ),
-                  subtitle: const Text('Connecté'),
+                const SectionTitle(
+                  title: 'Choisissez votre affichage',
+                  subtitle: 'Comment voulez-vous utiliser MultiWall ?',
                 ),
-              );
-            }),
 
-            const SizedBox(height: 30),
+                const SizedBox(height: 13),
 
-            OutlinedButton.icon(
-              onPressed: loading ? null : loadParticipants,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Actualiser les participants'),
-            ),
+                Row(
+                  children: [
+                    modeCard(
+                      value: 'mirror',
+                      icon: Icons.screen_share_rounded,
+                      title: 'Miroir',
+                      description: 'Le même écran sur tous les appareils',
+                    ),
+                    const SizedBox(width: 12),
+                    modeCard(
+                      value: 'video_wall',
+                      icon: Icons.grid_view_rounded,
+                      title: 'Mur vidéo',
+                      description: 'Un grand écran réparti',
+                    ),
+                  ],
+                ),
 
-            const SizedBox(height: 12),
+                const SizedBox(height: 25),
 
-            ElevatedButton.icon(
-              onPressed: closeSession,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              icon: const Icon(Icons.close),
-              label: const Text('Fermer la session'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+                const SectionTitle(
+                  title: 'Type de connexion',
+                  subtitle: 'Choisissez votre réseau.',
+                ),
+
+                const SizedBox(height: 10),
+
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    connectionChoice('both', 'Wi-Fi + Internet'),
+                    connectionChoice('local', 'Wi-Fi local'),
+                    connectionChoice('internet', 'Internet'),
+                  ],
+                ),
+
+                const SizedBox(height: 27),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton.icon(
+                    onPressed: loading ? null : createSession,
+                    icon: const Icon(Icons.add_circle_outline),
+                    label: const Text(
+                      'Créer une session',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 27),
+
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: panel,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: const Color(0xFF263D5D),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.login_rounded, color: cyan),
+                          SizedBox(width: 10),
+                          Text(
+                            'Rejoindre une session',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Entrez le code communiqué par l’organisateur.',
+                        style: TextStyle(color: muted, fontSize: 12),
+                      ),
+                      const SizedBox(height: 15),
+                      TextField(
+                        controller: codeController,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          letterSpacing: 8,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                        decoration: const InputDecoration(
+                          counterText: '',
+                          hintText: '000000',
+                          labelText: 'Code de session',
+                        ),
+                      ),
+                      const SizedBox(height: 13),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton.icon(
+                    
