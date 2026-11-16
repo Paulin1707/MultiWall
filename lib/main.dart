@@ -10,7 +10,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const String supabaseUrl =
     'https://cerzkniqycnggirvfzqv.supabase.co';
 
-// Remplace ce texte par ta clé sb_publishable complète.
 const String supabasePublishableKey =
     'sb_publishable_zxM_EQXh9qFQn88dbTAT7w_a9auV8Iu';
 
@@ -67,7 +66,9 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final TextEditingController codeController = TextEditingController();
+  final TextEditingController codeController =
+      TextEditingController();
+
   final TextEditingController deviceController =
       TextEditingController(text: 'Mon appareil');
 
@@ -76,13 +77,22 @@ class _HomePageState extends State<HomePage> {
 
   bool loading = false;
 
-  SupabaseClient get supabase => Supabase.instance.client;
+  SupabaseClient get supabase =>
+      Supabase.instance.client;
 
   @override
   void dispose() {
     codeController.dispose();
     deviceController.dispose();
     super.dispose();
+  }
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   // ===================================================
@@ -104,7 +114,8 @@ class _HomePageState extends State<HomePage> {
         },
       );
 
-      final data = Map<String, dynamic>.from(result as Map);
+      final data =
+          Map<String, dynamic>.from(result as Map);
 
       if (!mounted) return;
 
@@ -123,7 +134,9 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       showMessage('Impossible de créer la session : $e');
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+      }
     }
   }
 
@@ -159,7 +172,8 @@ class _HomePageState extends State<HomePage> {
         },
       );
 
-      final data = Map<String, dynamic>.from(result as Map);
+      final data =
+          Map<String, dynamic>.from(result as Map);
 
       if (!mounted) return;
 
@@ -168,12 +182,13 @@ class _HomePageState extends State<HomePage> {
         builder: (dialogContext) => AlertDialog(
           title: const Text('Demande envoyée'),
           content: Text(
-            'Ta demande a été envoyée au propriétaire de la session.\n\n'
-            'Statut : ${data['status']}',
+            'Ta demande a été envoyée au propriétaire '
+            'de la session.\n\nStatut : ${data['status']}',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
+              onPressed: () =>
+                  Navigator.pop(dialogContext),
               child: const Text('Compris'),
             ),
           ],
@@ -184,20 +199,14 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       showMessage('Impossible de rejoindre : $e');
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+      }
     }
   }
 
-  void showMessage(String message) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
-  }
-
   // ===================================================
-  // INTERFACE
+  // INTERFACE D'ACCUEIL
   // ===================================================
 
   @override
@@ -256,23 +265,30 @@ class _HomePageState extends State<HomePage> {
                 value: displayMode,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.screenshot_monitor),
+                  prefixIcon:
+                      Icon(Icons.screenshot_monitor),
                 ),
                 items: const [
                   DropdownMenuItem(
                     value: 'mirror',
-                    child: Text('Miroir - même écran partout'),
+                    child: Text(
+                      'Miroir - même écran partout',
+                    ),
                   ),
                   DropdownMenuItem(
                     value: 'video_wall',
-                    child: Text('Mur vidéo - écran réparti'),
+                    child: Text(
+                      'Mur vidéo - écran réparti',
+                    ),
                   ),
                 ],
                 onChanged: loading
                     ? null
                     : (value) {
                         if (value != null) {
-                          setState(() => displayMode = value);
+                          setState(() {
+                            displayMode = value;
+                          });
                         }
                       },
               ),
@@ -310,7 +326,9 @@ class _HomePageState extends State<HomePage> {
                     ? null
                     : (value) {
                         if (value != null) {
-                          setState(() => connectionType = value);
+                          setState(() {
+                            connectionType = value;
+                          });
                         }
                       },
               ),
@@ -321,7 +339,9 @@ class _HomePageState extends State<HomePage> {
                 onPressed: loading ? null : createSession,
                 icon: const Icon(Icons.add_link),
                 label: Text(
-                  loading ? 'Connexion...' : 'Créer une session',
+                  loading
+                      ? 'Connexion...'
+                      : 'Créer une session',
                 ),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.all(17),
@@ -351,6 +371,372 @@ class _HomePageState extends State<HomePage> {
                 decoration: const InputDecoration(
                   labelText: 'Code de session',
                   hintText: 'Exemple : 123456',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.pin),
+                  counterText: '',
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              TextField(
+                controller: deviceController,
+                decoration: const InputDecoration(
+                  labelText: 'Nom de ton appareil',
+                  hintText: 'Exemple : Téléphone de Paul',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.phone_android),
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              OutlinedButton.icon(
+                onPressed: loading ? null : joinSession,
+                icon: const Icon(Icons.login),
+                label: const Text('Rejoindre une session'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.all(17),
+                ),
+              ),
+
+              const SizedBox(height: 25),
+
+              const Text(
+                'MultiWall V1 - Connexion aux sessions',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// =====================================================
+// PAGE DE SESSION
+// =====================================================
+
+class SessionPage extends StatefulWidget {
+  final String sessionId;
+  final String code;
+  final String ownerToken;
+
+  const SessionPage({
+    super.key,
+    required this.sessionId,
+    required this.code,
+    required this.ownerToken,
+  });
+
+  @override
+  State<SessionPage> createState() => _SessionPageState();
+}
+
+class _SessionPageState extends State<SessionPage> {
+  bool closing = false;
+  bool loadingParticipants = false;
+
+  final Set<String> processing = {};
+
+  List<Map<String, dynamic>> participants = [];
+
+  SupabaseClient get supabase =>
+      Supabase.instance.client;
+
+  @override
+  void initState() {
+    super.initState();
+    loadParticipants();
+  }
+
+  // ===================================================
+  // CHARGER LES PARTICIPANTS
+  // ===================================================
+
+  Future<void> loadParticipants() async {
+    if (loadingParticipants) return;
+
+    setState(() => loadingParticipants = true);
+
+    try {
+      final result = await supabase.rpc(
+        'get_multiwall_participants',
+        params: {
+          'p_session_id': widget.sessionId,
+          'p_owner_token': widget.ownerToken,
+        },
+      );
+
+      final data = List<Map<String, dynamic>>.from(
+        (result as List).map(
+          (item) =>
+              Map<String, dynamic>.from(item as Map),
+        ),
+      );
+
+      if (mounted) {
+        setState(() => participants = data);
+      }
+    } on PostgrestException catch (e) {
+      showMessage('Erreur Supabase : ${e.message}');
+    } catch (e) {
+      showMessage('Erreur de chargement : $e');
+    } finally {
+      if (mounted) {
+        setState(() => loadingParticipants = false);
+      }
+    }
+  }
+
+  // ===================================================
+  // ACCEPTER OU REFUSER UN APPAREIL
+  // ===================================================
+
+  Future<void> decideParticipant(
+    String participantId,
+    bool accept,
+  ) async {
+    if (processing.contains(participantId)) return;
+
+    setState(() => processing.add(participantId));
+
+    try {
+      await supabase.rpc(
+        'decide_multiwall_join',
+        params: {
+          'p_session_id': widget.sessionId,
+          'p_owner_token': widget.ownerToken,
+          'p_participant_id': participantId,
+          'p_accept': accept,
+        },
+      );
+
+      showMessage(
+        accept
+            ? 'Appareil accepté !'
+            : 'Demande refusée.',
+      );
+
+      await loadParticipants();
+    } on PostgrestException catch (e) {
+      showMessage('Erreur Supabase : ${e.message}');
+    } catch (e) {
+      showMessage('Opération impossible : $e');
+    } finally {
+      if (mounted) {
+        setState(() => processing.remove(participantId));
+      }
+    }
+  }
+
+  // ===================================================
+  // COPIER LE CODE
+  // ===================================================
+
+  Future<void> copyCode() async {
+    await Clipboard.setData(
+      ClipboardData(text: widget.code),
+    );
+
+    if (!mounted) return;
+
+    showMessage('Code copié !');
+  }
+
+  // ===================================================
+  // FERMER LA SESSION
+  // ===================================================
+
+  Future<void> closeSession() async {
+    if (closing) return;
+
+    setState(() => closing = true);
+
+    try {
+      await supabase.rpc(
+        'close_multiwall_session',
+        params: {
+          'p_session_id': widget.sessionId,
+          'p_owner_token': widget.ownerToken,
+        },
+      );
+
+      if (!mounted) return;
+
+      showMessage('Session fermée.');
+      Navigator.pop(context);
+    } on PostgrestException catch (e) {
+      showMessage('Erreur : ${e.message}');
+    } catch (e) {
+      showMessage(
+        'Impossible de fermer la session : $e',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => closing = false);
+      }
+    }
+  }
+
+  // ===================================================
+  // MESSAGE
+  // ===================================================
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  // ===================================================
+  // CARTE D'UN PARTICIPANT
+  // ===================================================
+
+  Widget participantCard(
+    Map<String, dynamic> participant,
+  ) {
+    final id = participant['id'].toString();
+
+    final name =
+        participant['device_name']?.toString() ??
+        'Appareil';
+
+    final type =
+        participant['device_type']?.toString() ??
+        'unknown';
+
+    final status =
+        participant['status']?.toString() ?? '';
+
+    final isPending = status == 'pending';
+    final busy = processing.contains(id);
+
+    return Card(
+      color: const Color(0xFF102B49),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.devices,
+                  color: Color(0xFF168BFF),
+                  size: 30,
+                ),
+
+                const SizedBox(width: 12),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        'Type : $type',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                Text(
+                  isPending ? 'En attente' : 'Accepté',
+                  style: TextStyle(
+                    color: isPending
+                        ? Colors.orangeAccent
+                        : Colors.greenAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+
+            if (isPending) ...[
+              const SizedBox(height: 14),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: busy
+                          ? null
+                          : () => decideParticipant(
+                                id,
+                                true,
+                              ),
+                      icon: const Icon(Icons.check),
+                      label: const Text('Accepter'),
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: busy
+                          ? null
+                          : () => decideParticipant(
+                                id,
+                                false,
+                              ),
+                      icon: const Icon(Icons.close),
+                      label: const Text('Refuser'),
+                    ),
+                  ),
+                ],
+              ),
+
+              if (busy)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: LinearProgressIndicator(),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ===================================================
+  // INTERFACE DE LA SESSION
+  // ===================================================
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = participants
+        .where((p) => p['status'] == 'pending')
+        .toList();
+
+    final accepted = participants
+        .where((p) => p['status'] == 'accepted')
+        .toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Ma session MultiWall'),
+        automaticallyImplyLeading: false,
+        Exemple : 123456',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.pin),
                   counterText: '',
