@@ -26,6 +26,18 @@ jobs:
             flutter create --project-name multiwall --platforms=android,ios,web .
           fi
 
+      - name: Add Android internet permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          permission = '    <uses-permission android:name="android.permission.INTERNET" />\n'
+          if "android.permission.INTERNET" not in s:
+              s = s.replace("    <application", permission + "    <application", 1)
+          p.write_text(s)
+          PY
+
       - name: Add Supabase dependency
         run: flutter pub add supabase_flutter
 
