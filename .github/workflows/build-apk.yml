@@ -20,11 +20,15 @@ jobs:
         with:
           channel: stable
 
-      - name: Create Flutter project if needed
+      - name: Set Android app name
         run: |
-          if [ ! -f pubspec.yaml ]; then
-            flutter create --project-name MultiWall --platforms=android,ios,web .
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          s = s.replace('android:label="multiwall"', 'android:label="MultiWall"')
+          p.write_text(s)
+          PY
 
       - name: Add Android internet permission
         run: |
