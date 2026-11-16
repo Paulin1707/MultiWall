@@ -12,7 +12,7 @@ const String supabaseUrl =
 
 // Remplace ce texte par ta clé sb_publishable complète.
 const String supabasePublishableKey =
-    'COLLE_ICI_TA_CLE_SB_PUBLISHABLE';
+    'sb_publishable_zxM_EQXh9qFQn88dbTAT7w_a9auV8Iu';
 
 // =====================================================
 // DEMARRAGE
