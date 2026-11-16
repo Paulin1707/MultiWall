@@ -3,62 +3,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// =====================================================
-// CONFIGURATION SUPABASE
-// =====================================================
-
 const String supabaseUrl =
     'https://cerzkniqycnggirvfzqv.supabase.co';
 
-// Conserve ici ta clé sb_publishable actuelle.
-const String supabaseKey = 'sb_publishable_zxM_EQXh9qFQn88dbTAT7w_a9auV8Iu';
+const String supabaseAnonKey =
+    'sb_publishable_zxM_EQXh9qFQn88dbTAT7w_a9auV8Iu';
 
-const Color navy = Color(0xFF081426);
-const Color panel = Color(0xFF12233D);
-const Color blue = Color(0xFF2878FF);
-const Color cyan = Color(0xFF43D9FF);
-const Color muted = Color(0xFF9BAEC8);
+const Color navy = Color(0xFF0B1220);
+const Color panel = Color(0xFF151F32);
+const Color blue = Color(0xFF3478F6);
+const Color cyan = Color(0xFF36C8E8);
+const Color muted = Color(0xFF9AA9BF);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
     url: supabaseUrl,
-    anonKey: supabaseKey,
+    anonKey: supabaseAnonKey,
   );
 
   runApp(const MultiWallApp());
 }
-
-final SupabaseClient supabase = Supabase.instance.client;
-
-// =====================================================
-// OUTILS
-// =====================================================
-
-Map<String, dynamic> firstMap(dynamic result) {
-  if (result is List && result.isNotEmpty) {
-    return Map<String, dynamic>.from(result.first as Map);
-  }
-
-  if (result is Map) {
-    return Map<String, dynamic>.from(result);
-  }
-
-  return {};
-}
-
-String readString(Map<String, dynamic> data, List<String> keys) {
-  for (final key in keys) {
-    final value = data[key];
-    if (value != null) return value.toString();
-  }
-  return '';
-}
-
-// =====================================================
-// APPLICATION
-// =====================================================
 
 class MultiWallApp extends StatelessWidget {
   const MultiWallApp({super.key});
@@ -66,10 +32,9 @@ class MultiWallApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
       title: 'MultiWall',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        useMaterial3: true,
         brightness: Brightness.dark,
         scaffoldBackgroundColor: navy,
         colorScheme: ColorScheme.fromSeed(
@@ -81,99 +46,37 @@ class MultiWallApp extends StatelessWidget {
           foregroundColor: Colors.white,
           elevation: 0,
         ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: panel,
-          hintStyle: const TextStyle(color: muted),
-          labelStyle: const TextStyle(color: muted),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: Color(0xFF263D5D)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: cyan, width: 1.5),
-          ),
-        ),
       ),
       home: const HomePage(),
     );
   }
 }
 
-// =====================================================
-// COMPOSANTS GRAPHIQUES
-// =====================================================
-
-class BrandLogo extends StatelessWidget {
-  const BrandLogo({super.key, this.size = 48});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(15),
-        gradient: const LinearGradient(
-          colors: [blue, cyan],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Icon(
-        Icons.connected_tv_rounded,
-        color: Colors.white,
-        size: size * 0.58,
-      ),
-    );
+Map<String, dynamic> asMap(dynamic value) {
+  if (value is Map) {
+    return Map<String, dynamic>.from(value);
   }
+  return {};
 }
 
-class SectionTitle extends StatelessWidget {
-  const SectionTitle({
-    super.key,
-    required this.title,
-    this.subtitle,
-  });
-
-  final String title;
-  final String? subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        if (subtitle != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle!,
-            style: const TextStyle(color: muted, fontSize: 12),
-          ),
-        ],
-      ],
-    );
+List<Map<String, dynamic>> asMapList(dynamic value) {
+  if (value is Map && value['participants'] is List) {
+    value = value['participants'];
   }
-}
 
-// =====================================================
-// ACCUEIL
-// =====================================================
+  if (value is Map) {
+    value = [value];
+  }
+
+  if (value is! List) {
+    return [];
+  }
+
+  return value
+      .whereType<Map>()
+      .map((item) => Map<String, dynamic>.from(item))
+      .toList();
+}
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -183,12 +86,12 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final TextEditingController codeController =
-      TextEditingController();
-
   String displayMode = 'mirror';
   String connectionType = 'both';
   bool loading = false;
+
+  final TextEditingController codeController =
+      TextEditingController();
 
   @override
   void dispose() {
@@ -196,15 +99,11 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  void showMessage(String message) {
+  void message(String text) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: panel,
-      ),
+      SnackBar(content: Text(text)),
     );
   }
 
@@ -212,30 +111,32 @@ class _HomePageState extends State<HomePage> {
     setState(() => loading = true);
 
     try {
-      final result = await supabase.rpc(
+      final result = await Supabase.instance.client.rpc(
         'create_multiwall_session',
         params: {
           'p_display_mode': displayMode,
           'p_connection_type': connectionType,
-          'p_max_participants': 20,
+          'p_max_participants': 10,
         },
       );
 
-      final data = firstMap(result);
+      final data = asMap(result);
 
-      final sessionId = readString(data, ['session_id', 'id']);
-      final code = readString(data, ['code']);
-      final ownerToken = readString(data, ['owner_token']);
+      final sessionId = data['session_id']?.toString() ?? '';
+      final code = data['code']?.toString() ?? '';
+      final ownerToken = data['owner_token']?.toString() ?? '';
 
       if (sessionId.isEmpty ||
           code.isEmpty ||
           ownerToken.isEmpty) {
-        throw Exception('Informations de session incomplètes.');
+        throw Exception(
+          'Les informations de la session sont incomplètes.',
+        );
       }
 
       if (!mounted) return;
 
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => SessionPage(
@@ -246,9 +147,11 @@ class _HomePageState extends State<HomePage> {
         ),
       );
     } catch (e) {
-      showMessage('Erreur : $e');
+      message('Erreur de création : $e');
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+      }
     }
   }
 
@@ -256,14 +159,14 @@ class _HomePageState extends State<HomePage> {
     final code = codeController.text.trim();
 
     if (code.length != 6) {
-      showMessage('Entre un code de 6 chiffres.');
+      message('Le code doit contenir 6 chiffres.');
       return;
     }
 
     setState(() => loading = true);
 
     try {
-      final result = await supabase.rpc(
+      final result = await Supabase.instance.client.rpc(
         'request_multiwall_join',
         params: {
           'p_code': code,
@@ -272,98 +175,107 @@ class _HomePageState extends State<HomePage> {
         },
       );
 
-      final data = firstMap(result);
-      final status = readString(data, ['status']);
+      final data = asMap(result);
+      final status = data['status']?.toString();
 
-      if (!mounted) return;
-
-      showMessage(
-        status.isEmpty
-            ? 'Demande de connexion envoyée.'
+      message(
+        status == null
+            ? 'Demande envoyée. Attends la validation.'
             : 'Demande envoyée : $status',
       );
     } catch (e) {
-      showMessage('Erreur de connexion : $e');
+      message('Erreur de connexion : $e');
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) {
+        setState(() => loading = false);
+      }
     }
   }
 
-  Widget modeCard({
-    required String value,
-    required IconData icon,
-    required String title,
-    required String description,
-  }) {
-    final selected = displayMode == value;
-
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => setState(() => displayMode = value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFF183D70) : panel,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: selected ? blue : const Color(0xFF263D5D),
-              width: selected ? 1.8 : 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, color: selected ? cyan : muted, size: 27),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                description,
-                style: const TextStyle(
-                  color: muted,
-                  fontSize: 11,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Icon(
-                selected
-                    ? Icons.check_circle
-                    : Icons.circle_outlined,
-                color: selected ? cyan : muted,
-                size: 18,
-              ),
-            ],
+  Widget heading(String title, String subtitle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.bold,
           ),
         ),
-      ),
+        const SizedBox(height: 5),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: muted,
+            fontSize: 13,
+          ),
+        ),
+      ],
     );
   }
 
-  Widget connectionChoice(String value, String label) {
-    final selected = connectionType == value;
+  Widget modeCard(
+    String value,
+    String title,
+    String description,
+    IconData icon,
+  ) {
+    final selected = displayMode == value;
 
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) {
-        setState(() => connectionType = value);
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () {
+        setState(() => displayMode = value);
       },
-      selectedColor: blue,
-      backgroundColor: panel,
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : muted,
-        fontWeight: FontWeight.w600,
-      ),
-      side: BorderSide(
-        color: selected ? cyan : const Color(0xFF263D5D),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: selected
+              ? blue.withOpacity(0.16)
+              : panel,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? blue : Colors.white12,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: selected ? cyan : muted,
+              size: 28,
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      color: muted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              selected
+                  ? Icons.check_circle
+                  : Icons.circle_outlined,
+              color: selected ? cyan : muted,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -371,270 +283,553 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [navy, Color(0xFF0B1D36), navy],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+      appBar: AppBar(
+        title: const Text(
+          'MultiWall',
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 30),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const BrandLogo(),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'MultiWall',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          Text(
-                            'VOTRE ÉCRAN, PARTOUT.',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: cyan,
-                              letterSpacing: 1.8,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: panel,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.cast_connected,
-                        color: cyan,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 28),
-
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF164B91), Color(0xFF102747)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    border: Border.all(
-                      color: const Color(0xFF367DD1),
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      const Positioned(
-                        right: -10,
-                        top: 5,
-                        child: Icon(
-                          Icons.connected_tv_rounded,
-                          size: 110,
-                          color: Color(0x223DD9FF),
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'LE PARTAGE SANS LIMITES',
-                            style: TextStyle(
-                              color: cyan,
-                              fontSize: 10,
-                              letterSpacing: 1.5,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          const Text(
-                            'Diffusez autrement.',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 27,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 9),
-                          const Text(
-                            'Transformez vos appareils en un espace '
-                            'd’affichage connecté.',
-                            style: TextStyle(
-                              color: Color(0xFFD1E2F8),
-                              height: 1.5,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.devices,
-                                color: cyan,
-                                size: 17,
-                              ),
-                              const SizedBox(width: 7),
-                              Text(
-                                'Téléphones • Tablettes • Ordinateurs',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 18),
+            child: Icon(
+              Icons.connected_tv,
+              color: cyan,
+            ),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF173B78),
+                      Color(0xFF10233F),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 28),
-
-                const SectionTitle(
-                  title: 'Choisissez votre affichage',
-                  subtitle: 'Comment voulez-vous utiliser MultiWall ?',
-                ),
-
-                const SizedBox(height: 13),
-
-                Row(
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    modeCard(
-                      value: 'mirror',
-                      icon: Icons.screen_share_rounded,
-                      title: 'Miroir',
-                      description: 'Le même écran sur tous les appareils',
+                    Icon(
+                      Icons.cast_connected,
+                      size: 40,
+                      color: cyan,
                     ),
-                    const SizedBox(width: 12),
-                    modeCard(
-                      value: 'video_wall',
-                      icon: Icons.grid_view_rounded,
-                      title: 'Mur vidéo',
-                      description: 'Un grand écran réparti',
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 25),
-
-                const SectionTitle(
-                  title: 'Type de connexion',
-                  subtitle: 'Choisissez votre réseau.',
-                ),
-
-                const SizedBox(height: 10),
-
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    connectionChoice('both', 'Wi-Fi + Internet'),
-                    connectionChoice('local', 'Wi-Fi local'),
-                    connectionChoice('internet', 'Internet'),
-                  ],
-                ),
-
-                const SizedBox(height: 27),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton.icon(
-                    onPressed: loading ? null : createSession,
-                    icon: const Icon(Icons.add_circle_outline),
-                    label: const Text(
-                      'Créer une session',
+                    SizedBox(height: 16),
+                    Text(
+                      'Un écran. Plusieurs appareils.',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: blue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                    SizedBox(height: 8),
+                    Text(
+                      'Partage ton affichage et transforme '
+                      'tes appareils en un grand espace visuel.',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        height: 1.5,
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28),
+              heading(
+                'Créer une diffusion',
+                'Choisis le mode d’affichage.',
+              ),
+              const SizedBox(height: 14),
+              modeCard(
+                'mirror',
+                'Mode miroir',
+                'Tous les appareils affichent le même écran.',
+                Icons.content_copy,
+              ),
+              const SizedBox(height: 10),
+              modeCard(
+                'video_wall',
+                'Mur vidéo',
+                'Chaque appareil affiche une partie de l’image.',
+                Icons.grid_view,
+              ),
+              const SizedBox(height: 24),
+              heading(
+                'Type de connexion',
+                'Choisis comment connecter les appareils.',
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: connectionType,
+                    isExpanded: true,
+                    dropdownColor: panel,
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'both',
+                        child: Text('Wi-Fi local et Internet'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'local',
+                        child: Text('Wi-Fi local uniquement'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'internet',
+                        child: Text('Internet'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          connectionType = value;
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton.icon(
+                  onPressed: loading ? null : createSession,
+                  icon: const Icon(Icons.rocket_launch),
+                  label: Text(
+                    loading
+                        ? 'Patiente...'
+                        : 'Créer une session',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: blue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),
-
-                const SizedBox(height: 27),
-
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: panel,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: const Color(0xFF263D5D),
+              ),
+              const SizedBox(height: 32),
+              heading(
+                'Rejoindre une diffusion',
+                'Entre le code fourni par le responsable.',
+              ),
+              const SizedBox(height: 13),
+              TextField(
+                controller: codeController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: InputDecoration(
+                  hintText: 'Code à 6 chiffres',
+                  counterText: '',
+                  prefixIcon: const Icon(Icons.vpn_key),
+                  filled: true,
+                  fillColor: panel,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: loading ? null : joinSession,
+                  icon: const Icon(Icons.login),
+                  label: const Text('Rejoindre la session'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: cyan,
+                    side: const BorderSide(color: cyan),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+              ),
+              const SizedBox(height: 30),
+              const Center(
+                child: Text(
+                  'MULTIWALL • PARTAGE SANS LIMITES',
+                  style: TextStyle(
+                    color: muted,
+                    fontSize: 10,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SessionPage extends StatefulWidget {
+  final String sessionId;
+  final String code;
+  final String ownerToken;
+
+  const SessionPage({
+    super.key,
+    required this.sessionId,
+    required this.code,
+    required this.ownerToken,
+  });
+
+  @override
+  State<SessionPage> createState() => _SessionPageState();
+}
+
+class _SessionPageState extends State<SessionPage> {
+  List<Map<String, dynamic>> participants = [];
+  bool loading = false;
+  bool closing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadParticipants();
+  }
+
+  void message(String text) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text)),
+    );
+  }
+
+  Future<void> loadParticipants() async {
+    if (mounted) {
+      setState(() => loading = true);
+    }
+
+    try {
+      final result = await Supabase.instance.client.rpc(
+        'get_multiwall_participants',
+        params: {
+          'p_session_id': widget.sessionId,
+          'p_owner_token': widget.ownerToken,
+        },
+      );
+
+      participants = asMapList(result);
+    } catch (e) {
+      message('Erreur de chargement : $e');
+    } finally {
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
+  }
+
+  Future<void> decideParticipant(
+    String participantId,
+    bool accept,
+  ) async {
+    try {
+      await Supabase.instance.client.rpc(
+        'decide_multiwall_join',
+        params: {
+          'p_session_id': widget.sessionId,
+          'p_owner_token': widget.ownerToken,
+          'p_participant_id': participantId,
+          'p_accept': accept,
+        },
+      );
+
+      message(
+        accept
+            ? 'Appareil accepté.'
+            : 'Demande refusée.',
+      );
+
+      await loadParticipants();
+    } catch (e) {
+      message('Erreur : $e');
+    }
+  }
+
+  Future<void> closeSession() async {
+    setState(() => closing = true);
+
+    try {
+      await Supabase.instance.client.rpc(
+        'close_multiwall_session',
+        params: {
+          'p_session_id': widget.sessionId,
+          'p_owner_token': widget.ownerToken,
+        },
+      );
+
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (e) {
+      message('Impossible de fermer la session : $e');
+    } finally {
+      if (mounted) {
+        setState(() => closing = false);
+      }
+    }
+  }
+
+  Widget participantCard(
+    Map<String, dynamic> participant,
+  ) {
+    final id = participant['id']?.toString() ??
+        participant['participant_id']?.toString() ??
+        '';
+
+    final name =
+        participant['device_name']?.toString() ??
+        'Appareil connecté';
+
+    final status =
+        participant['status']?.toString() ?? 'inconnu';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: panel,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.devices,
+                color: cyan,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Text(
+                status,
+                style: const TextStyle(
+                  color: muted,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          if (status == 'pending' && id.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      decideParticipant(id, true);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: blue,
+                    ),
+                    child: const Text('Accepter'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      decideParticipant(id, false);
+                    },
+                    child: const Text('Refuser'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Ma session'),
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: loadParticipants,
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF173B78),
+                      Color(0xFF10233F),
+                    ],
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(
+                      Icons.cast_connected,
+                      color: cyan,
+                      size: 35,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'CODE DE CONNEXION',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        letterSpacing: 2,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SelectableText(
+                      widget.code,
+                      style: const TextStyle(
+                        fontSize: 38,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 8,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Clipboard.setData(
+                          ClipboardData(text: widget.code),
+                        );
+                        message('Code copié.');
+                      },
+                      icon: const Icon(Icons.copy),
+                      label: const Text('Copier le code'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 25),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Appareils participants',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 19,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: loading
+                        ? null
+                        : loadParticipants,
+                    icon: const Icon(
+                      Icons.refresh,
+                      color: cyan,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (loading && participants.isEmpty)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(25),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (participants.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: panel,
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: const Column(
                     children: [
-                      const Row(
-                        children: [
-                          Icon(Icons.login_rounded, color: cyan),
-                          SizedBox(width: 10),
-                          Text(
-                            'Rejoindre une session',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ],
+                      Icon(
+                        Icons.devices_other,
+                        size: 35,
+                        color: muted,
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Entrez le code communiqué par l’organisateur.',
-                        style: TextStyle(color: muted, fontSize: 12),
+                      SizedBox(height: 10),
+                      Text(
+                        'Aucun appareil pour le moment.',
+                        style: TextStyle(color: muted),
                       ),
-                      const SizedBox(height: 15),
-                      TextField(
-                        controller: codeController,
-                        keyboardType: TextInputType.number,
-                        maxLength: 6,
+                      SizedBox(height: 5),
+                      Text(
+                        'Partage le code pour inviter des appareils.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          letterSpacing: 8,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                        decoration: const InputDecoration(
-                          counterText: '',
-                          hintText: '000000',
-                          labelText: 'Code de session',
+                        style: TextStyle(
+                          color: muted,
+                          fontSize: 12,
                         ),
                       ),
-                      const SizedBox(height: 13),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: OutlinedButton.icon(
-                    
+                    ],
+                  ),
+                )
+              else
+                ...participants.map(participantCard),
+              const SizedBox(height: 25),
+              SizedBox(
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: closing ? null : closeSession,
+                  icon: const Icon(
+                    Icons.stop_circle_outlined,
+                  ),
+                  label: Text(
+                    closing
+                        ? 'Fermeture...'
+                        : 'Fermer la session',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.redAccent,
+                    side: const BorderSide(
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
