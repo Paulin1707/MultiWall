@@ -23,7 +23,7 @@ jobs:
       - name: Create Flutter project if needed
         run: |
           if [ ! -f pubspec.yaml ]; then
-            flutter create --project-name multiwall --platforms=android,ios,web .
+            flutter create --project-name MultiWall --platforms=android,ios,web .
           fi
 
       - name: Add Android internet permission
