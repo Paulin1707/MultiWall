@@ -11,7 +11,7 @@ const String supabaseUrl =
     'https://cerzkniqycnggirvfzqv.supabase.co';
 
 // Conserve ici ta clé sb_publishable actuelle.
-const String supabaseKey = 'COLLE_TA_CLE_SB_PUBLISHABLE_ICI';
+const String supabaseKey = 'sb_publishable_zxM_EQXh9qFQn88dbTAT7w_a9auV8Iu';
 
 const Color navy = Color(0xFF081426);
 const Color panel = Color(0xFF12233D);
