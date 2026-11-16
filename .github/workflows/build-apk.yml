@@ -20,26 +20,43 @@ jobs:
         with:
           channel: stable
 
-      - name: Set Android app name
+      - name: Create Flutter project and Android platform
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("android/app/src/main/AndroidManifest.xml")
-          s = p.read_text()
-          s = s.replace('android:label="multiwall"', 'android:label="MultiWall"')
-          p.write_text(s)
-          PY
+          flutter create --project-name multiwall --platforms=android,ios,web .
 
-      - name: Add Android internet permission
+      - name: Configure Android app
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
           p = Path("android/app/src/main/AndroidManifest.xml")
+
+          if not p.exists():
+              raise SystemExit("AndroidManifest.xml introuvable après flutter create")
+
           s = p.read_text()
+
+          # Nom visible de l'application
+          s, count = re.subn(
+              r'android:label="[^"]*"',
+              'android:label="MultiWall"',
+              s,
+              count=1
+          )
+
+          if count == 0:
+              raise SystemExit("Attribut android:label introuvable")
+
+          # Autorisation Internet
           permission = '    <uses-permission android:name="android.permission.INTERNET" />\n'
+
           if "android.permission.INTERNET" not in s:
-              s = s.replace("    <application", permission + "    <application", 1)
+              s = s.replace("<application", permission + "    <application", 1)
+
           p.write_text(s)
+          print("Nom MultiWall et permission Internet configurés.")
+
           PY
 
       - name: Add Supabase dependency
