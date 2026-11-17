@@ -349,6 +349,17 @@ class MultiWallStream {
     });
   }
 
+  /// Close and forget a receiver that is no longer accepted in the session.
+  Future<void> removeParticipant(String participant) async {
+    if (!isOwner || participant.isEmpty) return;
+    _reconnectTimers.remove(participant)?.cancel();
+    _reconnectAttempts.remove(participant);
+    _pendingCandidates.remove(participant);
+    _remoteDescriptionReady.remove(participant);
+    final pc = _peers.remove(participant);
+    await pc?.close();
+  }
+
   Future<void> _sendSignal({
     String? recipient,
     required String type,
