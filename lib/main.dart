@@ -530,6 +530,7 @@ class _SessionPageState extends State<SessionPage> {
   String streamStatus = 'Partage non démarré';
   MultiWallStream? stream;
   final Set<String> offeredParticipants = {};
+  String? lastWallLayoutSignature;
   Timer? participantPoller;
 
   @override
@@ -625,6 +626,7 @@ class _SessionPageState extends State<SessionPage> {
       await active.stop();
       stream = null;
       offeredParticipants.clear();
+      lastWallLayoutSignature = null;
       if (mounted) {
         setState(() => streamStatus = 'Partage arrêté');
         message('Le partage d’écran est arrêté.');
@@ -645,26 +647,43 @@ class _SessionPageState extends State<SessionPage> {
       columns++;
     }
     final rows = accepted.isEmpty ? 1 : (accepted.length + columns - 1) ~/ columns;
+    final participantIds = accepted
+        .map((p) => p['id']?.toString() ??
+            p['participant_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toList();
+    final layoutSignature = '${rows}x${columns}:${participantIds.join(',')}';
+    final layoutChanged = widget.displayMode == 'video_wall' &&
+        layoutSignature != lastWallLayoutSignature;
 
-    for (var index = 0; index < accepted.length; index++) {
-      final participant = accepted[index];
-      final id = participant['id']?.toString() ??
-          participant['participant_id']?.toString() ?? '';
-      if (id.isEmpty || offeredParticipants.contains(id)) continue;
-      offeredParticipants.add(id);
-      try {
-        if (widget.displayMode == 'video_wall') {
-          final row = index ~/ columns;
-          final column = index % columns;
+    // Re-publish the complete layout whenever membership changes so that
+    // already-connected receivers are moved to their new tile as well.
+    if (layoutChanged) {
+      for (var index = 0; index < accepted.length; index++) {
+        final id = participantIds[index];
+        try {
           await activeStream.sendWallLayout(
             id,
-            row: row,
-            column: column,
+            row: index ~/ columns,
+            column: index % columns,
             rows: rows,
             columns: columns,
           );
+        } catch (e) {
+          if (mounted) {
+            setState(() => streamStatus = 'Disposition du mur vidéo : $e');
+          }
         }
+      }
+      lastWallLayoutSignature = layoutSignature;
+    }
+
+    for (var index = 0; index < accepted.length; index++) {
+      final id = participantIds[index];
+      if (id.isEmpty || offeredParticipants.contains(id)) continue;
+      try {
         await activeStream.offerTo(id);
+        offeredParticipants.add(id);
       } catch (e) {
         offeredParticipants.remove(id);
         if (mounted) setState(() => streamStatus = 'Connexion appareil : $e');
