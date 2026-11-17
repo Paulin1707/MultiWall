@@ -118,18 +118,32 @@ class MultiWallStream {
       backgroundReady = await FlutterBackground.initialize(androidConfig: config);
     }
 
-    // Android requires the user's screen-capture consent before starting a
-    // mediaProjection foreground service on recent Android versions.
+    // Android 14+ requires explicit MediaProjection consent before the
+    // mediaProjection foreground service is started. Request it through
+    // flutter_webrtc first, then enable the background service, and only
+    // then create the display stream.
+    if (WebRTC.platformIsAndroid) {
+      final captureGranted = await Helper.requestCapturePermission();
+      if (!captureGranted) {
+        throw StateError('Autorisation de partage d’écran refusée.');
+      }
+
+      if (backgroundReady &&
+          !FlutterBackground.isBackgroundExecutionEnabled) {
+        final backgroundEnabled =
+            await FlutterBackground.enableBackgroundExecution();
+        if (!backgroundEnabled) {
+          onStatus?.call(
+            'Partage autorisé, mais maintien en arrière-plan indisponible.',
+          );
+        }
+      }
+    }
+
     _localStream = await navigator.mediaDevices.getDisplayMedia({
       'video': true,
       'audio': false,
     });
-
-    if (WebRTC.platformIsAndroid &&
-        backgroundReady &&
-        !FlutterBackground.isBackgroundExecutionEnabled) {
-      await FlutterBackground.enableBackgroundExecution();
-    }
 
     _running = true;
     _poller = Timer.periodic(const Duration(seconds: 1), (_) => _pollSignals());
