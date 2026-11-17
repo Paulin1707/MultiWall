@@ -531,6 +531,8 @@ class _SessionPageState extends State<SessionPage> {
   MultiWallStream? stream;
   final Set<String> offeredParticipants = {};
   String? lastWallLayoutSignature;
+  int wallRowsSetting = 2;
+  int wallColumnsSetting = 2;
   Timer? participantPoller;
 
   @override
@@ -636,17 +638,67 @@ class _SessionPageState extends State<SessionPage> {
     }
   }
 
+  Widget wallLayoutControls() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: panel,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Disposition du mur vidéo',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          const Text('Choisis le nombre de lignes et de colonnes. Les lignes s’ajustent si davantage d’appareils rejoignent la session.',
+              style: TextStyle(color: muted, fontSize: 12)),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: DropdownButtonFormField<int>(
+              value: wallRowsSetting,
+              decoration: const InputDecoration(labelText: 'Lignes', border: OutlineInputBorder()),
+              dropdownColor: panel,
+              items: List.generate(4, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => wallRowsSetting = value);
+                offerAcceptedParticipants();
+              },
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: DropdownButtonFormField<int>(
+              value: wallColumnsSetting,
+              decoration: const InputDecoration(labelText: 'Colonnes', border: OutlineInputBorder()),
+              dropdownColor: panel,
+              items: List.generate(4, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => wallColumnsSetting = value);
+                offerAcceptedParticipants();
+              },
+            )),
+          ]),
+          const SizedBox(height: 8),
+          Text('Grille choisie : ${wallRowsSetting} × ${wallColumnsSetting}',
+              style: const TextStyle(color: cyan, fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
   Future<void> offerAcceptedParticipants() async {
     final activeStream = stream;
     if (activeStream == null) return;
     final accepted = participants
         .where((p) => p['status']?.toString() == 'accepted')
         .toList();
-    var columns = 1;
-    while (columns * columns < accepted.length) {
-      columns++;
-    }
-    final rows = accepted.isEmpty ? 1 : (accepted.length + columns - 1) ~/ columns;
+    final columns = widget.displayMode == 'video_wall' ? wallColumnsSetting : 1;
+    final minimumRows = accepted.isEmpty ? 1 : (accepted.length + columns - 1) ~/ columns;
+    final rows = widget.displayMode == 'video_wall'
+        ? (wallRowsSetting > minimumRows ? wallRowsSetting : minimumRows)
+        : 1;
     final participantIds = accepted
         .map((p) => p['id']?.toString() ??
             p['participant_id']?.toString() ?? '')
@@ -658,9 +710,13 @@ class _SessionPageState extends State<SessionPage> {
     // Re-publish the complete layout whenever membership changes so that
     // already-connected receivers are moved to their new tile as well.
     if (layoutChanged) {
+      var allLayoutsSent = true;
       for (var index = 0; index < accepted.length; index++) {
         final id = participantIds[index];
-        if (id.isEmpty) continue;
+        if (id.isEmpty) {
+          allLayoutsSent = false;
+          continue;
+        }
         try {
           await activeStream.sendWallLayout(
             id,
@@ -670,12 +726,13 @@ class _SessionPageState extends State<SessionPage> {
             columns: columns,
           );
         } catch (e) {
+          allLayoutsSent = false;
           if (mounted) {
             setState(() => streamStatus = 'Disposition du mur vidéo : $e');
           }
         }
       }
-      lastWallLayoutSignature = layoutSignature;
+      if (allLayoutsSent) lastWallLayoutSignature = layoutSignature;
     }
 
     for (var index = 0; index < accepted.length; index++) {
@@ -961,6 +1018,10 @@ class _SessionPageState extends State<SessionPage> {
                   ],
                 ),
               ),
+              if (widget.displayMode == 'video_wall') ...[
+                const SizedBox(height: 14),
+                wallLayoutControls(),
+              ],
               if (stream != null) ...[
                 const SizedBox(height: 14),
                 pointerController(),
