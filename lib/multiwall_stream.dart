@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_background/flutter_background.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'signaling_validation.dart';
 
 /// WebRTC transport for MultiWall. The owner captures the Android display and
 /// negotiates one peer connection per accepted participant.
@@ -200,33 +201,21 @@ class MultiWallStream {
     Map<String, dynamic> payload, {
     required String expectedType,
   }) {
-    final sdp = payload['sdp'];
-    final type = payload['type'];
-    if (sdp is! String ||
-        sdp.isEmpty ||
-        sdp.length > 1024 * 1024 ||
-        type != expectedType) {
+    if (!SignalingValidation.isValidDescription(
+      payload,
+      expectedType: expectedType,
+    )) {
       return null;
     }
-    return RTCSessionDescription(sdp, expectedType);
+    return RTCSessionDescription(payload['sdp'] as String, expectedType);
   }
 
   RTCIceCandidate? _validatedCandidate(Map<String, dynamic> payload) {
-    final value = payload['candidate'];
-    final mid = payload['sdpMid'];
-    final line = payload['sdpMLineIndex'];
-    if (value is! String ||
-        value.isEmpty ||
-        value.length > 8192 ||
-        (mid != null && (mid is! String || mid.length > 256)) ||
-        (line != null &&
-            (line is! num || !line.isFinite || line < 0 || line > 1000))) {
-      return null;
-    }
+    if (!SignalingValidation.isValidCandidate(payload)) return null;
     return RTCIceCandidate(
-      value,
-      mid as String?,
-      line is num ? line.toInt() : null,
+      payload['candidate'] as String,
+      payload['sdpMid'] as String?,
+      (payload['sdpMLineIndex'] as num?)?.toInt(),
     );
   }
 
@@ -273,30 +262,21 @@ class MultiWallStream {
     }
 
     if (type == 'wall_layout') {
-      final row = payload['row'];
-      final column = payload['column'];
-      final rows = payload['rows'];
-      final columns = payload['columns'];
-      // Treat signaling payloads as untrusted input. Bound the grid size and
-      // reject coordinates outside the declared grid before they reach layout.
-      if (row is num &&
-          column is num &&
-          rows is num &&
-          columns is num &&
-          rows >= 1 &&
-          rows <= 8 &&
-          columns >= 1 &&
-          columns <= 8 &&
-          row >= 0 &&
-          row < rows &&
-          column >= 0 &&
-          column < columns) {
-        onWallLayout?.call(row.toInt(), column.toInt(), rows.toInt(), columns.toInt());
+      // Reject malformed grids before they reach receiver layout code.
+      if (SignalingValidation.isValidWallLayout(payload)) {
+        onWallLayout?.call(
+          (payload['row'] as num).toInt(),
+          (payload['column'] as num).toInt(),
+          (payload['rows'] as num).toInt(),
+          (payload['columns'] as num).toInt(),
+        );
       }
     } else if (type == 'pointer') {
-      final x = payload['x'];
-      final y = payload['y'];
-      if (x is num && y is num) onPointer?.call(x.toDouble().clamp(0.0, 1.0), y.toDouble().clamp(0.0, 1.0), payload['visible'] == true);
+      if (SignalingValidation.isValidPointer(payload)) {
+        final x = (payload['x'] as num).toDouble().clamp(0.0, 1.0);
+        final y = (payload['y'] as num).toDouble().clamp(0.0, 1.0);
+        onPointer?.call(x, y, payload['visible'] == true);
+      }
     } else if (type == 'offer') {
       final previous = _peers.remove('owner');
       await previous?.close();
