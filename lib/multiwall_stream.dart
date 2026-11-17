@@ -299,7 +299,9 @@ class MultiWallStream {
     } else if (type == 'offer') {
       final previous = _peers.remove('owner');
       await previous?.close();
-      _pendingCandidates.remove('owner');
+      // Do not clear queued ICE here: trickled candidates for this offer can
+      // reach the receiver before the offer itself. They are drained only
+      // after the new remote description has been installed.
       _remoteDescriptionReady.remove('owner');
       final pc = await createPeerConnection(_rtcConfig);
       _peers['owner'] = pc;
