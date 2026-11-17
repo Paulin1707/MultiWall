@@ -26,7 +26,20 @@ Future<String> getOrCreateMultiWallClientKey() async {
   const storageKey = 'multiwall_client_key_v1';
   final preferences = await SharedPreferences.getInstance();
   final existing = preferences.getString(storageKey);
-  if (existing != null && RegExp(r'^[a-f0-9]{64}
+  if (existing != null &&
+      existing.length == 64 &&
+      RegExp(r'^[a-f0-9]+$').hasMatch(existing)) {
+    return existing;
+  }
+
+  final random = math.Random.secure();
+  final generated = List<int>.generate(32, (_) => random.nextInt(256))
+      .map((value) => value.toRadixString(16).padLeft(2, '0'))
+      .join();
+  await preferences.setString(storageKey, generated);
+  return generated;
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
