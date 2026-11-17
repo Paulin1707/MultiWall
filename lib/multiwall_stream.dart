@@ -338,7 +338,13 @@ class MultiWallStream {
         if (isOwner) {
           await offerTo(peerKey, restart: true);
         } else {
+          // Keep requesting a fresh offer while the receiver remains
+          // disconnected. The owner may miss a transient signaling request.
           await _sendSignal(type: 'reconnect_request', payload: {'attempt': attempt + 1});
+          if (_running && _peers[peerKey] == pc &&
+              (_reconnectAttempts[peerKey] ?? 0) < 3) {
+            _scheduleReconnect(peerKey, pc);
+          }
         }
       } catch (error) {
         onStatus?.call('Reconnexion impossible : ' + error.toString());
