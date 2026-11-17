@@ -24,6 +24,9 @@ void main() {
       expect(SignalingValidation.isValidCandidate({
         'candidate': 'candidate', 'sdpMLineIndex': double.infinity,
       }), isFalse);
+      expect(SignalingValidation.isValidCandidate({
+        'candidate': 'candidate', 'sdpMLineIndex': 1.5,
+      }), isFalse);
     });
 
     test('accepts only finite wall coordinates inside a bounded grid', () {
@@ -38,6 +41,9 @@ void main() {
       }), isFalse);
       expect(SignalingValidation.isValidWallLayout({
         'row': 0, 'column': 0, 'rows': 9, 'columns': 2,
+      }), isFalse);
+      expect(SignalingValidation.isValidWallLayout({
+        'row': 0.5, 'column': 0, 'rows': 2, 'columns': 2,
       }), isFalse);
     });
 
