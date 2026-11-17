@@ -1,4 +1,5 @@
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -525,15 +526,20 @@ class _SessionPageState extends State<SessionPage> {
   String streamStatus = 'Partage non démarré';
   MultiWallStream? stream;
   final Set<String> offeredParticipants = {};
+  Timer? participantPoller;
 
   @override
   void initState() {
     super.initState();
     loadParticipants();
+    participantPoller = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted && !loading && !closing) loadParticipants();
+    });
   }
 
   @override
   void dispose() {
+    participantPoller?.cancel();
     final activeStream = stream;
     if (activeStream != null) {
       activeStream.stop();
@@ -966,6 +972,9 @@ class _ReceiverPageState extends State<ReceiverPage> {
   }
 
   Future<void> initializeReceiver() async {
+    status = widget.initialStatus == 'accepted'
+        ? 'Appareil accepté. Connexion au partage...'
+        : 'Demande envoyée. En attente de validation...';
     try {
       await renderer.initialize();
       transport = MultiWallStream(
