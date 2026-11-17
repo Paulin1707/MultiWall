@@ -33,6 +33,8 @@ class MultiWallStream {
   MediaStream? _localStream;
   Timer? _poller;
   bool _running = false;
+  Timer? _pointerThrottle;
+  Map<String, dynamic>? _latestPointer;
 
   static const Map<String, dynamic> _rtcConfig = {
     'iceServers': [
@@ -87,9 +89,19 @@ class MultiWallStream {
 
   Future<void> sendPointer(double x, double y, bool visible) async {
     if (!isOwner || !_running) return;
-    for (final participant in _peers.keys.toList()) {
-      await _sendSignal(recipient: participant, type: 'pointer', payload: {'x': x, 'y': y, 'visible': visible});
-    }
+    _latestPointer = {'x': x.clamp(0.0, 1.0), 'y': y.clamp(0.0, 1.0), 'visible': visible};
+    if (_pointerThrottle?.isActive ?? false) return;
+    _pointerThrottle = Timer(const Duration(milliseconds: 50), () {
+      final payload = _latestPointer;
+      _latestPointer = null;
+      if (payload == null || !_running) return;
+      for (final participant in _peers.keys.toList()) {
+        unawaited(_sendSignal(recipient: participant, type: 'pointer', payload: payload)
+            .catchError((Object error) {
+          onStatus?.call('Pointeur non transmis : $error');
+        }));
+      }
+    });
   }
 
   Future<void> offerTo(String participant) async {
@@ -279,6 +291,9 @@ class MultiWallStream {
     _running = false;
     _poller?.cancel();
     _poller = null;
+    _pointerThrottle?.cancel();
+    _pointerThrottle = null;
+    _latestPointer = null;
     for (final pc in _peers.values) {
       await pc.close();
     }
