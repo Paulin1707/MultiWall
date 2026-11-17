@@ -12,6 +12,7 @@ class MultiWallStream {
     required this.isOwner,
     this.participantId,
     this.onRemoteStream,
+    this.onPointer,
     this.onStatus,
   });
 
@@ -20,6 +21,7 @@ class MultiWallStream {
   final bool isOwner;
   final String? participantId;
   final void Function(MediaStream stream)? onRemoteStream;
+  final void Function(double x, double y, bool visible)? onPointer;
   final void Function(String status)? onStatus;
 
   final SupabaseClient _db = Supabase.instance.client;
@@ -81,6 +83,13 @@ class MultiWallStream {
     _running = true;
     _poller = Timer.periodic(const Duration(seconds: 1), (_) => _pollSignals());
     await _pollSignals();
+  }
+
+  Future<void> sendPointer(double x, double y, bool visible) async {
+    if (!isOwner || !_running) return;
+    for (final participant in _peers.keys.toList()) {
+      await _sendSignal(recipient: participant, type: 'pointer', payload: {'x': x, 'y': y, 'visible': visible});
+    }
   }
 
   Future<void> offerTo(String participant) async {
@@ -199,7 +208,11 @@ class MultiWallStream {
       return;
     }
 
-    if (type == 'offer') {
+    if (type == 'pointer') {
+      final x = payload['x'];
+      final y = payload['y'];
+      if (x is num && y is num) onPointer?.call(x.toDouble().clamp(0.0, 1.0), y.toDouble().clamp(0.0, 1.0), payload['visible'] == true);
+    } else if (type == 'offer') {
       final pc = await createPeerConnection(_rtcConfig);
       _peers['owner'] = pc;
       pc.onIceCandidate = (candidate) {
