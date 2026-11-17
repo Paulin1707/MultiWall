@@ -650,7 +650,6 @@ class _SessionPageState extends State<SessionPage> {
     final participantIds = accepted
         .map((p) => p['id']?.toString() ??
             p['participant_id']?.toString() ?? '')
-        .where((id) => id.isNotEmpty)
         .toList();
     final layoutSignature = '${rows}x${columns}:${participantIds.join(',')}';
     final layoutChanged = widget.displayMode == 'video_wall' &&
@@ -661,6 +660,7 @@ class _SessionPageState extends State<SessionPage> {
     if (layoutChanged) {
       for (var index = 0; index < accepted.length; index++) {
         final id = participantIds[index];
+        if (id.isEmpty) continue;
         try {
           await activeStream.sendWallLayout(
             id,
