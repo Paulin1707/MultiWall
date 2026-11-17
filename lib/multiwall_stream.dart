@@ -196,12 +196,43 @@ class MultiWallStream {
     }
   }
 
-  Future<void> _addOrQueueCandidate(String peerKey, RTCPeerConnection pc, Map<String, dynamic> payload) async {
-    final candidate = RTCIceCandidate(
-      payload['candidate']?.toString(),
-      payload['sdpMid']?.toString(),
-      payload['sdpMLineIndex'] is num ? (payload['sdpMLineIndex'] as num).toInt() : null,
+  RTCSessionDescription? _validatedDescription(
+    Map<String, dynamic> payload, {
+    required String expectedType,
+  }) {
+    final sdp = payload['sdp'];
+    final type = payload['type'];
+    if (sdp is! String ||
+        sdp.isEmpty ||
+        sdp.length > 1024 * 1024 ||
+        type != expectedType) {
+      return null;
+    }
+    return RTCSessionDescription(sdp, expectedType);
+  }
+
+  RTCIceCandidate? _validatedCandidate(Map<String, dynamic> payload) {
+    final value = payload['candidate'];
+    final mid = payload['sdpMid'];
+    final line = payload['sdpMLineIndex'];
+    if (value is! String ||
+        value.isEmpty ||
+        value.length > 8192 ||
+        (mid != null && (mid is! String || mid.length > 256)) ||
+        (line != null &&
+            (line is! num || !line.isFinite || line < 0 || line > 1000))) {
+      return null;
+    }
+    return RTCIceCandidate(
+      value,
+      mid as String?,
+      line is num ? line.toInt() : null,
     );
+  }
+
+  Future<void> _addOrQueueCandidate(String peerKey, RTCPeerConnection pc, Map<String, dynamic> payload) async {
+    final candidate = _validatedCandidate(payload);
+    if (candidate == null) return;
     if (_remoteDescriptionReady.contains(peerKey)) {
       await pc.addCandidate(candidate);
     } else {
@@ -231,10 +262,9 @@ class MultiWallStream {
       if (type == 'reconnect_request') {
         await offerTo(sender, restart: true);
       } else if (type == 'answer') {
-        await pc.setRemoteDescription(RTCSessionDescription(
-          payload['sdp']?.toString(),
-          payload['type']?.toString(),
-        ));
+        final description = _validatedDescription(payload, expectedType: 'answer');
+        if (description == null) return;
+        await pc.setRemoteDescription(description);
         await _drainCandidates(sender, pc);
       } else if (type == 'ice_candidate') {
         await _addOrQueueCandidate(sender, pc, payload);
@@ -290,10 +320,13 @@ class MultiWallStream {
       pc.onTrack = (event) {
         if (event.streams.isNotEmpty) onRemoteStream?.call(event.streams.first);
       };
-      await pc.setRemoteDescription(RTCSessionDescription(
-        payload['sdp']?.toString(),
-        payload['type']?.toString(),
-      ));
+      final description = _validatedDescription(payload, expectedType: 'offer');
+      if (description == null) {
+        await pc.close();
+        _peers.remove('owner');
+        return;
+      }
+      await pc.setRemoteDescription(description);
       await _drainCandidates('owner', pc);
       final answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -307,12 +340,10 @@ class MultiWallStream {
       if (pc != null) {
         await _addOrQueueCandidate('owner', pc, payload);
       } else {
-        final candidate = RTCIceCandidate(
-          payload['candidate']?.toString(),
-          payload['sdpMid']?.toString(),
-          payload['sdpMLineIndex'] is num ? (payload['sdpMLineIndex'] as num).toInt() : null,
-        );
-        (_pendingCandidates['owner'] ??= <RTCIceCandidate>[]).add(candidate);
+        final candidate = _validatedCandidate(payload);
+        if (candidate != null) {
+          (_pendingCandidates['owner'] ??= <RTCIceCandidate>[]).add(candidate);
+        }
       }
     }
   }
