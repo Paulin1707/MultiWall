@@ -30,6 +30,8 @@ class MultiWallStream {
   final SupabaseClient _db = Supabase.instance.client;
   final Map<String, RTCPeerConnection> _peers = {};
   final Set<String> _handledSignals = {};
+  static const int _maxRememberedSignals = 2000;
+  static const int _maxQueuedIceCandidates = 256;
   final Map<String, List<RTCIceCandidate>> _pendingCandidates = {};
   final Set<String> _remoteDescriptionReady = {};
   final Map<String, Timer> _reconnectTimers = {};
@@ -183,7 +185,7 @@ class MultiWallStream {
         if (id == null || _handledSignals.contains(id)) continue;
         try {
           await _handleSignal(signal);
-          _handledSignals.add(id);
+          _rememberHandledSignal(id);
         } catch (e) {
           // Keep failed messages eligible for the next poll instead of losing
           // negotiation messages permanently after a transient network error.
@@ -194,6 +196,15 @@ class MultiWallStream {
       onStatus?.call('Signalisation : $e');
     } finally {
       _pollInProgress = false;
+    }
+  }
+
+  void _rememberHandledSignal(String id) {
+    _handledSignals.add(id);
+    // Keep memory bounded during long-running sessions. Set preserves
+    // insertion order, so the oldest processed signal can be discarded.
+    if (_handledSignals.length > _maxRememberedSignals) {
+      _handledSignals.remove(_handledSignals.first);
     }
   }
 
@@ -225,7 +236,15 @@ class MultiWallStream {
     if (_remoteDescriptionReady.contains(peerKey)) {
       await pc.addCandidate(candidate);
     } else {
-      (_pendingCandidates[peerKey] ??= <RTCIceCandidate>[]).add(candidate);
+      final queue = _pendingCandidates.putIfAbsent(
+        peerKey,
+        () => <RTCIceCandidate>[],
+      );
+      // ICE candidates can arrive before SDP. Bound this queue so malformed
+      // or excessive signaling cannot grow memory without limit.
+      if (queue.length < _maxQueuedIceCandidates) {
+        queue.add(candidate);
+      }
     }
   }
 
@@ -322,7 +341,13 @@ class MultiWallStream {
       } else {
         final candidate = _validatedCandidate(payload);
         if (candidate != null) {
-          (_pendingCandidates['owner'] ??= <RTCIceCandidate>[]).add(candidate);
+          final queue = _pendingCandidates.putIfAbsent(
+            'owner',
+            () => <RTCIceCandidate>[],
+          );
+          if (queue.length < _maxQueuedIceCandidates) {
+            queue.add(candidate);
+          }
         }
       }
     }
