@@ -573,6 +573,23 @@ class _SessionPageState extends State<SessionPage> {
     }
   }
 
+  Future<void> stopScreenShare() async {
+    final active = stream;
+    if (active == null) return;
+    setState(() => streamStatus = 'Arrêt du partage...');
+    try {
+      await active.stop();
+      stream = null;
+      offeredParticipants.clear();
+      if (mounted) {
+        setState(() => streamStatus = 'Partage arrêté');
+        message('Le partage d’écran est arrêté.');
+      }
+    } catch (e) {
+      if (mounted) setState(() => streamStatus = 'Erreur à l’arrêt : $e');
+    }
+  }
+
   Future<void> offerAcceptedParticipants() async {
     final activeStream = stream;
     if (activeStream == null) return;
@@ -841,9 +858,23 @@ class _SessionPageState extends State<SessionPage> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: capturing || stream != null ? null : startScreenShare,
-                        icon: const Icon(Icons.screen_share),
-                        label: Text(capturing ? 'Démarrage...' : 'Démarrer le partage'),
+                        onPressed: capturing
+                            ? null
+                            : stream == null
+                                ? startScreenShare
+                                : stopScreenShare,
+                        icon: Icon(stream == null ? Icons.screen_share : Icons.stop_circle),
+                        label: Text(
+                          capturing
+                              ? 'Démarrage...'
+                              : stream == null
+                                  ? 'Démarrer le partage'
+                                  : 'Arrêter le partage',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: stream == null ? blue : Colors.redAccent,
+                          foregroundColor: Colors.white,
+                        ),
                       ),
                     ),
                   ],
