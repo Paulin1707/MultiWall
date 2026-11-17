@@ -560,8 +560,9 @@ class _SessionPageState extends State<SessionPage> {
       capturing = true;
       streamStatus = 'Demande d’autorisation Android...';
     });
+    MultiWallStream? transport;
     try {
-      final transport = MultiWallStream(
+      transport = MultiWallStream(
         sessionId: widget.sessionId,
         ownerToken: widget.ownerToken,
         isOwner: true,
@@ -574,6 +575,14 @@ class _SessionPageState extends State<SessionPage> {
       await loadParticipants();
       await offerAcceptedParticipants();
     } catch (e) {
+      // A failure after Android grants capture permission must not leave the
+      // MediaProjection stream or foreground service running in the background.
+      if (stream == transport) stream = null;
+      try {
+        await transport?.stop();
+      } catch (_) {
+        // Preserve the original startup error for the user.
+      }
       if (mounted) setState(() => streamStatus = 'Erreur de capture : $e');
     } finally {
       if (mounted) setState(() => capturing = false);
