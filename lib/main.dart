@@ -654,12 +654,8 @@ class _SessionPageState extends State<SessionPage> {
       offeredParticipants.add(id);
       try {
         if (widget.displayMode == 'video_wall') {
-          final row = participant['tile_row'] is num
-              ? (participant['tile_row'] as num).toInt()
-              : index ~/ columns;
-          final column = participant['tile_column'] is num
-              ? (participant['tile_column'] as num).toInt()
-              : index % columns;
+          final row = index ~/ columns;
+          final column = index % columns;
           await activeStream.sendWallLayout(
             id,
             row: row,
