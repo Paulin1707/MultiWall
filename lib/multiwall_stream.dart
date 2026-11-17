@@ -43,12 +43,64 @@ class MultiWallStream {
   Timer? _pointerThrottle;
   Map<String, dynamic>? _latestPointer;
 
-  static const Map<String, dynamic> _rtcConfig = {
+  static const Map<String, dynamic> _fallbackRtcConfig = {
     'iceServers': [
       {'urls': 'stun:stun.l.google.com:19302'}
     ],
     'sdpSemantics': 'unified-plan',
   };
+  Future<Map<String, dynamic>>? _rtcConfigFuture;
+
+  Future<Map<String, dynamic>> _getRtcConfig() {
+    return _rtcConfigFuture ??= _loadRtcConfig();
+  }
+
+  Future<Map<String, dynamic>> _loadRtcConfig() async {
+    try {
+      final response = await _db.functions.invoke(
+        'multiwall-turn-credentials',
+        body: {
+          'session_id': sessionId,
+          if (isOwner) 'owner_token': ownerToken else 'participant_id': participantId,
+        },
+      );
+      final data = response.data;
+      if (data is Map && data['iceServers'] is List) {
+        final servers = (data['iceServers'] as List)
+            .whereType<Map>()
+            .map((server) => Map<String, dynamic>.from(server))
+            .toList();
+        final hasTurn = servers.any((server) {
+          final rawUrls = server['urls'];
+          final urls = rawUrls is String
+              ? <dynamic>[rawUrls]
+              : rawUrls is List
+                  ? rawUrls
+                  : <dynamic>[];
+          final hasRelayUrl = urls.any((url) =>
+              url is String &&
+              (url.startsWith('turn:') || url.startsWith('turns:')));
+          return hasRelayUrl &&
+              server['username'] is String &&
+              (server['username'] as String).isNotEmpty &&
+              server['credential'] is String &&
+              (server['credential'] as String).isNotEmpty;
+        });
+        if (servers.isNotEmpty && hasTurn) {
+          onStatus?.call('Serveur relais TURN activé');
+          return {
+            'iceServers': servers,
+            'sdpSemantics': 'unified-plan',
+          };
+        }
+      }
+    } catch (_) {
+      // TURN is optional until the provider credentials are configured.
+      // Keep direct STUN connectivity available as a safe fallback.
+    }
+    onStatus?.call('Relais TURN indisponible : connexion directe activée');
+    return _fallbackRtcConfig;
+  }
 
   Future<void> startOwnerCapture() async {
     if (!isOwner) throw StateError('Seul le propriétaire peut capturer l’écran.');
@@ -132,7 +184,7 @@ class MultiWallStream {
       _remoteDescriptionReady.remove(participant);
     }
 
-    final pc = await createPeerConnection(_rtcConfig);
+    final pc = await createPeerConnection(await _getRtcConfig());
     _peers[participant] = pc;
     _watchConnection(participant, pc);
     for (final track in _localStream!.getTracks()) {
@@ -303,7 +355,7 @@ class MultiWallStream {
       // reach the receiver before the offer itself. They are drained only
       // after the new remote description has been installed.
       _remoteDescriptionReady.remove('owner');
-      final pc = await createPeerConnection(_rtcConfig);
+      final pc = await createPeerConnection(await _getRtcConfig());
       _peers['owner'] = pc;
       _watchConnection('owner', pc);
       pc.onIceCandidate = (candidate) {
