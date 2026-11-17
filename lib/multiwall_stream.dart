@@ -138,8 +138,15 @@ class MultiWallStream {
 
       for (final signal in signals) {
         final id = signal['id']?.toString();
-        if (id == null || !_handledSignals.add(id)) continue;
-        await _handleSignal(signal);
+        if (id == null || _handledSignals.contains(id)) continue;
+        try {
+          await _handleSignal(signal);
+          _handledSignals.add(id);
+        } catch (e) {
+          // Keep failed messages eligible for the next poll instead of losing
+          // negotiation messages permanently after a transient network error.
+          onStatus?.call('Traitement du signal à réessayer : $e');
+        }
       }
     } catch (e) {
       onStatus?.call('Signalisation : $e');
