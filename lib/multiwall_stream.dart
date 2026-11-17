@@ -43,7 +43,7 @@ class MultiWallStream {
     if (!isOwner) throw StateError('Seul le propriétaire peut capturer l’écran.');
     if (_running) return;
 
-    var permitted = true;
+    var backgroundReady = true;
     if (WebRTC.platformIsAndroid) {
       const config = FlutterBackgroundAndroidConfig(
         notificationTitle: 'MultiWall',
@@ -51,10 +51,8 @@ class MultiWallStream {
         notificationImportance: AndroidNotificationImportance.normal,
         notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
       );
-      permitted = await FlutterBackground.hasPermissions;
-      if (!permitted) {
-        permitted = await FlutterBackground.initialize(androidConfig: config);
-      }
+      // initialize() must be called even when permissions were granted earlier.
+      backgroundReady = await FlutterBackground.initialize(androidConfig: config);
     }
 
     // Android requires the user's screen-capture consent before starting a
@@ -65,7 +63,7 @@ class MultiWallStream {
     });
 
     if (WebRTC.platformIsAndroid &&
-        permitted &&
+        backgroundReady &&
         !FlutterBackground.isBackgroundExecutionEnabled) {
       await FlutterBackground.enableBackgroundExecution();
     }
