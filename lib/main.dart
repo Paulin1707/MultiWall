@@ -579,7 +579,7 @@ class _SessionPageState extends State<SessionPage> {
     if (active == null || !pointerEnabled || areaSize.width <= 0 || areaSize.height <= 0) return;
     final x = (localPosition.dx / areaSize.width).clamp(0.0, 1.0);
     final y = (localPosition.dy / areaSize.height).clamp(0.0, 1.0);
-    active.sendPointer(x, y, true);
+    active.sendPointer(x.toDouble(), y.toDouble(), true);
   }
 
   Widget pointerController() {
@@ -1103,8 +1103,8 @@ class _ReceiverPageState extends State<ReceiverPage> {
                           Positioned.fill(child: RTCVideoView(renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain)),
                           if (pointerVisible && pointerPosition != null)
                             Positioned(
-                              left: (pointerPosition!.dx * constraints.maxWidth - 14).clamp(0.0, constraints.maxWidth - 28),
-                              top: (pointerPosition!.dy * constraints.maxHeight - 14).clamp(0.0, constraints.maxHeight - 28),
+                              left: (pointerPosition!.dx * constraints.maxWidth - 14).clamp(0.0, constraints.maxWidth - 28).toDouble(),
+                              top: (pointerPosition!.dy * constraints.maxHeight - 14).clamp(0.0, constraints.maxHeight - 28).toDouble(),
                               child: IgnorePointer(child: Container(
                                 width: 28, height: 28,
                                 decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.95), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 5)]),
