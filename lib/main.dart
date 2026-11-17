@@ -146,6 +146,7 @@ class _HomePageState extends State<HomePage> {
             sessionId: sessionId,
             code: code,
             ownerToken: ownerToken,
+            displayMode: displayMode,
           ),
         ),
       );
@@ -506,12 +507,14 @@ class SessionPage extends StatefulWidget {
   final String sessionId;
   final String code;
   final String ownerToken;
+  final String displayMode;
 
   const SessionPage({
     super.key,
     required this.sessionId,
     required this.code,
     required this.ownerToken,
+    required this.displayMode,
   });
 
   @override
@@ -634,15 +637,37 @@ class _SessionPageState extends State<SessionPage> {
   Future<void> offerAcceptedParticipants() async {
     final activeStream = stream;
     if (activeStream == null) return;
-    for (final participant in participants) {
+    final accepted = participants
+        .where((p) => p['status']?.toString() == 'accepted')
+        .toList();
+    var columns = 1;
+    while (columns * columns < accepted.length) {
+      columns++;
+    }
+    final rows = accepted.isEmpty ? 1 : (accepted.length + columns - 1) ~/ columns;
+
+    for (var index = 0; index < accepted.length; index++) {
+      final participant = accepted[index];
       final id = participant['id']?.toString() ??
           participant['participant_id']?.toString() ?? '';
-      if (id.isEmpty || participant['status']?.toString() != 'accepted' ||
-          offeredParticipants.contains(id)) {
-        continue;
-      }
+      if (id.isEmpty || offeredParticipants.contains(id)) continue;
       offeredParticipants.add(id);
       try {
+        if (widget.displayMode == 'video_wall') {
+          final row = participant['tile_row'] is num
+              ? (participant['tile_row'] as num).toInt()
+              : index ~/ columns;
+          final column = participant['tile_column'] is num
+              ? (participant['tile_column'] as num).toInt()
+              : index % columns;
+          await activeStream.sendWallLayout(
+            id,
+            row: row,
+            column: column,
+            rows: rows,
+            columns: columns,
+          );
+        }
         await activeStream.offerTo(id);
       } catch (e) {
         offeredParticipants.remove(id);
@@ -1042,6 +1067,10 @@ class _ReceiverPageState extends State<ReceiverPage> {
   bool initialized = false;
   Offset? pointerPosition;
   bool pointerVisible = false;
+  int wallRow = 0;
+  int wallColumn = 0;
+  int wallRows = 1;
+  int wallColumns = 1;
 
   @override
   void initState() {
@@ -1060,6 +1089,15 @@ class _ReceiverPageState extends State<ReceiverPage> {
         ownerToken: '',
         isOwner: false,
         participantId: widget.participantId,
+        onWallLayout: (row, column, rows, columns) {
+          if (mounted) setState(() {
+            wallRow = row;
+            wallColumn = column;
+            wallRows = rows;
+            wallColumns = columns;
+            status = 'Position du mur vidéo reçue';
+          });
+        },
         onPointer: (x, y, visible) {
           if (mounted) setState(() { pointerPosition = Offset(x, y); pointerVisible = visible; });
         },
@@ -1099,18 +1137,52 @@ class _ReceiverPageState extends State<ReceiverPage> {
                 color: Colors.black,
                 child: initialized && renderer.srcObject != null
                     ? LayoutBuilder(builder: (context, constraints) {
-                        return Stack(children: [
-                          Positioned.fill(child: RTCVideoView(renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain)),
-                          if (pointerVisible && pointerPosition != null)
-                            Positioned(
-                              left: (pointerPosition!.dx * constraints.maxWidth - 14).clamp(0.0, constraints.maxWidth - 28).toDouble(),
-                              top: (pointerPosition!.dy * constraints.maxHeight - 14).clamp(0.0, constraints.maxHeight - 28).toDouble(),
-                              child: IgnorePointer(child: Container(
-                                width: 28, height: 28,
-                                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.95), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 5)]),
-                              )),
+                        final sourceAspect = renderer.videoWidth > 0 && renderer.videoHeight > 0
+                            ? renderer.videoWidth / renderer.videoHeight
+                            : constraints.maxWidth / constraints.maxHeight;
+                        final tileAspect = sourceAspect * wallRows / wallColumns;
+                        final pointerX = pointerPosition == null
+                            ? -1.0
+                            : pointerPosition!.dx * wallColumns - wallColumn;
+                        final pointerY = pointerPosition == null
+                            ? -1.0
+                            : pointerPosition!.dy * wallRows - wallRow;
+                        final pointerInTile = pointerVisible &&
+                            pointerPosition != null &&
+                            pointerX >= 0 && pointerX <= 1 &&
+                            pointerY >= 0 && pointerY <= 1;
+                        return Center(
+                          child: AspectRatio(
+                            aspectRatio: tileAspect,
+                            child: ClipRect(
+                              child: LayoutBuilder(builder: (context, tileConstraints) {
+                                final tileWidth = tileConstraints.maxWidth;
+                                final tileHeight = tileConstraints.maxHeight;
+                                return Stack(clipBehavior: Clip.hardEdge, children: [
+                                  Positioned(
+                                    left: -wallColumn * tileWidth,
+                                    top: -wallRow * tileHeight,
+                                    width: tileWidth * wallColumns,
+                                    height: tileHeight * wallRows,
+                                    child: RTCVideoView(
+                                      renderer,
+                                      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+                                    ),
+                                  ),
+                                  if (pointerInTile)
+                                    Positioned(
+                                      left: (pointerX * tileWidth - 14).clamp(0.0, tileWidth - 28).toDouble(),
+                                      top: (pointerY * tileHeight - 14).clamp(0.0, tileHeight - 28).toDouble(),
+                                      child: IgnorePointer(child: Container(
+                                        width: 28, height: 28,
+                                        decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.95), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 5)]),
+                                      )),
+                                    ),
+                                ]);
+                              }),
                             ),
-                        ]);
+                          ),
+                        );
                       })
                     : const Center(
                         child: Column(
