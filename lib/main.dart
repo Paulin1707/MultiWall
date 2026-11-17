@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'multiwall_stream.dart';
 
 const String supabaseUrl =
     'https://cerzkniqycnggirvfzqv.supabase.co';
@@ -176,12 +178,22 @@ class _HomePageState extends State<HomePage> {
       );
 
       final data = asMap(result);
-      final status = data['status']?.toString();
-
-      message(
-        status == null
-            ? 'Demande envoyée. Attends la validation.'
-            : 'Demande envoyée : $status',
+      final status = data['status']?.toString() ?? 'pending';
+      final participantId = data['participant_id']?.toString() ?? '';
+      final sessionId = data['session_id']?.toString() ?? '';
+      if (participantId.isEmpty || sessionId.isEmpty) {
+        throw Exception('Le serveur n’a pas retourné les identifiants nécessaires.');
+      }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ReceiverPage(
+            sessionId: sessionId,
+            participantId: participantId,
+            initialStatus: status,
+          ),
+        ),
       );
     } catch (e) {
       message('Erreur de connexion : $e');
@@ -509,11 +521,70 @@ class _SessionPageState extends State<SessionPage> {
   List<Map<String, dynamic>> participants = [];
   bool loading = false;
   bool closing = false;
+  bool capturing = false;
+  String streamStatus = 'Partage non démarré';
+  MultiWallStream? stream;
+  final Set<String> offeredParticipants = {};
 
   @override
   void initState() {
     super.initState();
     loadParticipants();
+  }
+
+  @override
+  void dispose() {
+    final activeStream = stream;
+    if (activeStream != null) {
+      activeStream.stop();
+    }
+    super.dispose();
+  }
+
+  Future<void> startScreenShare() async {
+    if (capturing) return;
+    setState(() {
+      capturing = true;
+      streamStatus = 'Demande d’autorisation Android...';
+    });
+    try {
+      final transport = MultiWallStream(
+        sessionId: widget.sessionId,
+        ownerToken: widget.ownerToken,
+        isOwner: true,
+        onStatus: (value) {
+          if (mounted) setState(() => streamStatus = value);
+        },
+      );
+      await transport.startOwnerCapture();
+      stream = transport;
+      await loadParticipants();
+      await offerAcceptedParticipants();
+    } catch (e) {
+      if (mounted) setState(() => streamStatus = 'Erreur de capture : $e');
+    } finally {
+      if (mounted) setState(() => capturing = false);
+    }
+  }
+
+  Future<void> offerAcceptedParticipants() async {
+    final activeStream = stream;
+    if (activeStream == null) return;
+    for (final participant in participants) {
+      final id = participant['id']?.toString() ??
+          participant['participant_id']?.toString() ?? '';
+      if (id.isEmpty || participant['status']?.toString() != 'accepted' ||
+          offeredParticipants.contains(id)) {
+        continue;
+      }
+      offeredParticipants.add(id);
+      try {
+        await activeStream.offerTo(id);
+      } catch (e) {
+        offeredParticipants.remove(id);
+        if (mounted) setState(() => streamStatus = 'Connexion appareil : $e');
+      }
+    }
   }
 
   void message(String text) {
@@ -539,6 +610,7 @@ class _SessionPageState extends State<SessionPage> {
       );
 
       participants = asMapList(result);
+      await offerAcceptedParticipants();
     } catch (e) {
       message('Erreur de chargement : $e');
     } finally {
@@ -588,6 +660,8 @@ class _SessionPageState extends State<SessionPage> {
       );
 
       if (!mounted) return;
+      await stream?.stop();
+      stream = null;
       Navigator.pop(context);
     } catch (e) {
       message('Impossible de fermer la session : $e');
@@ -741,6 +815,34 @@ class _SessionPageState extends State<SessionPage> {
                   ],
                 ),
               ),
+              const SizedBox(height: 22),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Partage réel de l’écran',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 7),
+                    Text(streamStatus,
+                        style: const TextStyle(color: muted, fontSize: 12)),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: capturing || stream != null ? null : startScreenShare,
+                        icon: const Icon(Icons.screen_share),
+                        label: Text(capturing ? 'Démarrage...' : 'Démarrer le partage'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 25),
               Row(
                 children: [
@@ -828,6 +930,108 @@ class _SessionPageState extends State<SessionPage> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class ReceiverPage extends StatefulWidget {
+  final String sessionId;
+  final String participantId;
+  final String initialStatus;
+
+  const ReceiverPage({
+    super.key,
+    required this.sessionId,
+    required this.participantId,
+    required this.initialStatus,
+  });
+
+  @override
+  State<ReceiverPage> createState() => _ReceiverPageState();
+}
+
+class _ReceiverPageState extends State<ReceiverPage> {
+  final RTCVideoRenderer renderer = RTCVideoRenderer();
+  MultiWallStream? transport;
+  String status = 'En attente de validation du propriétaire...';
+  bool initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    initializeReceiver();
+  }
+
+  Future<void> initializeReceiver() async {
+    try {
+      await renderer.initialize();
+      transport = MultiWallStream(
+        sessionId: widget.sessionId,
+        ownerToken: '',
+        isOwner: false,
+        participantId: widget.participantId,
+        onRemoteStream: (mediaStream) {
+          renderer.srcObject = mediaStream;
+          if (mounted) setState(() => status = 'Écran reçu en direct');
+        },
+        onStatus: (value) {
+          if (mounted) setState(() => status = value);
+        },
+      );
+      await transport!.startReceiver();
+      if (mounted) setState(() => initialized = true);
+    } catch (e) {
+      if (mounted) setState(() => status = 'Connexion impossible : $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    transport?.stop();
+    renderer.srcObject = null;
+    renderer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Réception MultiWall')),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                color: Colors.black,
+                child: initialized && renderer.srcObject != null
+                    ? RTCVideoView(renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain)
+                    : const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.connected_tv, size: 54, color: cyan),
+                            SizedBox(height: 14),
+                            Text('En attente du partage...', style: TextStyle(color: Colors.white70)),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.circle, color: cyan, size: 10),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(status, style: const TextStyle(color: muted))),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
