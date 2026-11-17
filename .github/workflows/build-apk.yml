@@ -29,6 +29,9 @@ jobs:
       - name: Create Flutter project and Android platform
         run: flutter create --project-name multiwall --platforms=android,ios,web .
 
+      - name: Remove generated placeholder test
+        run: rm -f test/widget_test.dart
+
       - name: Configure Android app
         run: |
           python3 - <<'PY'
