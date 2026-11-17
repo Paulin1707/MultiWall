@@ -770,7 +770,28 @@ class _SessionPageState extends State<SessionPage> {
         },
       );
 
-      participants = asMapList(result);
+      final refreshedParticipants = asMapList(result);
+      final acceptedIds = refreshedParticipants
+          .where((p) => p['status']?.toString() == 'accepted')
+          .map((p) => p['id']?.toString() ??
+              p['participant_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      // Close WebRTC peers for receivers that were removed, rejected, or
+      // marked disconnected by the session backend.
+      final noLongerAccepted = offeredParticipants
+          .where((id) => !acceptedIds.contains(id))
+          .toList();
+      for (final id in noLongerAccepted) {
+        await stream?.removeParticipant(id);
+        offeredParticipants.remove(id);
+      }
+
+      participants = refreshedParticipants;
+      if (noLongerAccepted.isNotEmpty) {
+        lastWallLayoutSignature = null;
+      }
       await offerAcceptedParticipants();
     } catch (e) {
       message('Erreur de chargement : $e');
