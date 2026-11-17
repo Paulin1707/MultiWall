@@ -72,8 +72,8 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Remove generated placeholder test
-        run: rm -f test/widget_test.dart
+      - name: Run signaling validation tests
+        run: flutter test test/signaling_validation_test.dart
 
       - name: Analyze Dart code
         run: flutter analyze --no-fatal-infos
