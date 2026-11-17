@@ -29,6 +29,8 @@ class MultiWallStream {
   final Set<String> _handledSignals = {};
   final Map<String, List<RTCIceCandidate>> _pendingCandidates = {};
   final Set<String> _remoteDescriptionReady = {};
+  final Map<String, Timer> _reconnectTimers = {};
+  final Map<String, int> _reconnectAttempts = {};
   bool _pollInProgress = false;
   MediaStream? _localStream;
   Timer? _poller;
@@ -104,14 +106,21 @@ class MultiWallStream {
     });
   }
 
-  Future<void> offerTo(String participant) async {
+  Future<void> offerTo(String participant, {bool restart = false}) async {
     if (!isOwner || _localStream == null) {
       throw StateError('La capture du propriétaire doit être active.');
     }
-    if (_peers.containsKey(participant)) return;
+    if (_peers.containsKey(participant)) {
+      if (!restart) return;
+      final previous = _peers.remove(participant);
+      await previous?.close();
+      _pendingCandidates.remove(participant);
+      _remoteDescriptionReady.remove(participant);
+    }
 
     final pc = await createPeerConnection(_rtcConfig);
     _peers[participant] = pc;
+    _watchConnection(participant, pc);
     for (final track in _localStream!.getTracks()) {
       await pc.addTrack(track, _localStream!);
     }
@@ -208,7 +217,9 @@ class MultiWallStream {
       if (sender == null || sender.isEmpty) return;
       final pc = _peers[sender];
       if (pc == null) return;
-      if (type == 'answer') {
+      if (type == 'reconnect_request') {
+        await offerTo(sender, restart: true);
+      } else if (type == 'answer') {
         await pc.setRemoteDescription(RTCSessionDescription(
           payload['sdp']?.toString(),
           payload['type']?.toString(),
@@ -225,8 +236,13 @@ class MultiWallStream {
       final y = payload['y'];
       if (x is num && y is num) onPointer?.call(x.toDouble().clamp(0.0, 1.0), y.toDouble().clamp(0.0, 1.0), payload['visible'] == true);
     } else if (type == 'offer') {
+      final previous = _peers.remove('owner');
+      await previous?.close();
+      _pendingCandidates.remove('owner');
+      _remoteDescriptionReady.remove('owner');
       final pc = await createPeerConnection(_rtcConfig);
       _peers['owner'] = pc;
+      _watchConnection('owner', pc);
       pc.onIceCandidate = (candidate) {
         if (candidate.candidate != null && candidate.candidate!.isNotEmpty) {
           unawaited(_sendSignal(
@@ -269,6 +285,51 @@ class MultiWallStream {
     }
   }
 
+  void _watchConnection(String peerKey, RTCPeerConnection pc) {
+    pc.onIceConnectionState = (state) {
+      if (!_running || _peers[peerKey] != pc) return;
+      if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
+        _reconnectTimers.remove(peerKey)?.cancel();
+        _reconnectAttempts.remove(peerKey);
+        onStatus?.call('Appareil connecté');
+      } else if (state == RTCIceConnectionState.RTCIceConnectionStateDisconnected ||
+          state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
+        _scheduleReconnect(peerKey, pc);
+      }
+    };
+  }
+
+  void _scheduleReconnect(String peerKey, RTCPeerConnection pc) {
+    if (_reconnectTimers[peerKey]?.isActive ?? false) return;
+    final attempt = _reconnectAttempts[peerKey] ?? 0;
+    if (attempt >= 3) {
+      onStatus?.call('Connexion interrompue. Reconnexion automatique épuisée.');
+      return;
+    }
+    _reconnectTimers[peerKey] = Timer(Duration(seconds: attempt == 0 ? 3 : 5), () async {
+      _reconnectTimers.remove(peerKey);
+      if (!_running || _peers[peerKey] != pc) return;
+      final state = await pc.getIceConnectionState();
+      if (state != RTCIceConnectionState.RTCIceConnectionStateDisconnected &&
+          state != RTCIceConnectionState.RTCIceConnectionStateFailed) return;
+      _reconnectAttempts[peerKey] = attempt + 1;
+      onStatus?.call('Tentative de reconnexion ' + (attempt + 1).toString() + '/3...');
+      try {
+        if (isOwner) {
+          await offerTo(peerKey, restart: true);
+        } else {
+          await _sendSignal(type: 'reconnect_request', payload: {'attempt': attempt + 1});
+        }
+      } catch (error) {
+        onStatus?.call('Reconnexion impossible : ' + error.toString());
+        if (_running && (_reconnectAttempts[peerKey] ?? 0) < 3) {
+          _scheduleReconnect(peerKey, _peers[peerKey] ?? pc);
+        }
+      }
+    });
+  }
+
   Future<void> _sendSignal({
     String? recipient,
     required String type,
@@ -298,6 +359,11 @@ class MultiWallStream {
       await pc.close();
     }
     _peers.clear();
+    for (final timer in _reconnectTimers.values) {
+      timer.cancel();
+    }
+    _reconnectTimers.clear();
+    _reconnectAttempts.clear();
     _pendingCandidates.clear();
     _remoteDescriptionReady.clear();
     _handledSignals.clear();
