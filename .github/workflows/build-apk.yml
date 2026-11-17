@@ -48,11 +48,18 @@ jobs:
           permissions = [
               "android.permission.INTERNET",
               "android.permission.MODIFY_AUDIO_SETTINGS",
+              "android.permission.FOREGROUND_SERVICE",
+              "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+              "android.permission.POST_NOTIFICATIONS",
           ]
           for permission_name in permissions:
               declaration = f'    <uses-permission android:name="{permission_name}" />'
               if permission_name not in s:
                   s = s.replace("<application", declaration + "\n    <application", 1)
+
+          service = """    <service android:name="de.julianassmann.flutter_background.IsolateHolderService" android:exported="false" android:foregroundServiceType="mediaProjection" />\n"""
+          if "de.julianassmann.flutter_background.IsolateHolderService" not in s:
+              s = s.replace("</application>", service + "  </application>", 1)
 
           p.write_text(s)
           print("Configuration Android terminée.")
