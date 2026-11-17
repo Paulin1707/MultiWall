@@ -25,6 +25,9 @@ class MultiWallStream {
   final SupabaseClient _db = Supabase.instance.client;
   final Map<String, RTCPeerConnection> _peers = {};
   final Set<String> _handledSignals = {};
+  final Map<String, List<RTCIceCandidate>> _pendingCandidates = {};
+  final Set<String> _remoteDescriptionReady = {};
+  bool _pollInProgress = false;
   MediaStream? _localStream;
   Timer? _poller;
   bool _running = false;
@@ -111,7 +114,8 @@ class MultiWallStream {
   }
 
   Future<void> _pollSignals() async {
-    if (!_running) return;
+    if (!_running || _pollInProgress) return;
+    _pollInProgress = true;
     try {
       final result = await _db.rpc(
         'get_multiwall_signals',
@@ -134,6 +138,29 @@ class MultiWallStream {
       }
     } catch (e) {
       onStatus?.call('Signalisation : $e');
+    } finally {
+      _pollInProgress = false;
+    }
+  }
+
+  Future<void> _addOrQueueCandidate(String peerKey, RTCPeerConnection pc, Map<String, dynamic> payload) async {
+    final candidate = RTCIceCandidate(
+      payload['candidate']?.toString(),
+      payload['sdpMid']?.toString(),
+      payload['sdpMLineIndex'] is num ? (payload['sdpMLineIndex'] as num).toInt() : null,
+    );
+    if (_remoteDescriptionReady.contains(peerKey)) {
+      await pc.addCandidate(candidate);
+    } else {
+      (_pendingCandidates[peerKey] ??= <RTCIceCandidate>[]).add(candidate);
+    }
+  }
+
+  Future<void> _drainCandidates(String peerKey, RTCPeerConnection pc) async {
+    _remoteDescriptionReady.add(peerKey);
+    final queued = _pendingCandidates.remove(peerKey) ?? <RTCIceCandidate>[];
+    for (final candidate in queued) {
+      await pc.addCandidate(candidate);
     }
   }
 
@@ -153,12 +180,9 @@ class MultiWallStream {
           payload['sdp']?.toString(),
           payload['type']?.toString(),
         ));
+        await _drainCandidates(sender, pc);
       } else if (type == 'ice_candidate') {
-        await pc.addCandidate(RTCIceCandidate(
-          payload['candidate']?.toString(),
-          payload['sdpMid']?.toString(),
-          payload['sdpMLineIndex'] as int?,
-        ));
+        await _addOrQueueCandidate(sender, pc, payload);
       }
       return;
     }
@@ -185,6 +209,7 @@ class MultiWallStream {
         payload['sdp']?.toString(),
         payload['type']?.toString(),
       ));
+      await _drainCandidates('owner', pc);
       final answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       await _sendSignal(
@@ -195,11 +220,14 @@ class MultiWallStream {
     } else if (type == 'ice_candidate') {
       final pc = _peers['owner'];
       if (pc != null) {
-        await pc.addCandidate(RTCIceCandidate(
+        await _addOrQueueCandidate('owner', pc, payload);
+      } else {
+        final candidate = RTCIceCandidate(
           payload['candidate']?.toString(),
           payload['sdpMid']?.toString(),
-          payload['sdpMLineIndex'] as int?,
-        ));
+          payload['sdpMLineIndex'] is num ? (payload['sdpMLineIndex'] as num).toInt() : null,
+        );
+        (_pendingCandidates['owner'] ??= <RTCIceCandidate>[]).add(candidate);
       }
     }
   }
@@ -230,6 +258,9 @@ class MultiWallStream {
       await pc.close();
     }
     _peers.clear();
+    _pendingCandidates.clear();
+    _remoteDescriptionReady.clear();
+    _handledSignals.clear();
     if (_localStream != null) {
       for (final track in _localStream!.getTracks()) {
         await track.stop();
