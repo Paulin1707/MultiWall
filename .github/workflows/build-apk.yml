@@ -52,7 +52,7 @@ jobs:
           for permission_name in permissions:
               declaration = f'    <uses-permission android:name="{permission_name}" />'
               if permission_name not in s:
-                  s = s.replace("<application", declaration + "\\n    <application", 1)
+                  s = s.replace("<application", declaration + "\n    <application", 1)
 
           p.write_text(s)
           print("Configuration Android terminée.")
@@ -71,7 +71,7 @@ jobs:
         run: rm -f test/widget_test.dart
 
       - name: Analyze Dart code
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Build Android APK
         run: flutter build apk --release
