@@ -13,6 +13,7 @@ class MultiWallStream {
     this.participantId,
     this.onRemoteStream,
     this.onPointer,
+    this.onWallLayout,
     this.onStatus,
   });
 
@@ -22,6 +23,7 @@ class MultiWallStream {
   final String? participantId;
   final void Function(MediaStream stream)? onRemoteStream;
   final void Function(double x, double y, bool visible)? onPointer;
+  final void Function(int row, int column, int rows, int columns)? onWallLayout;
   final void Function(String status)? onStatus;
 
   final SupabaseClient _db = Supabase.instance.client;
@@ -87,6 +89,15 @@ class MultiWallStream {
     _running = true;
     _poller = Timer.periodic(const Duration(seconds: 1), (_) => _pollSignals());
     await _pollSignals();
+  }
+
+  Future<void> sendWallLayout(String participant, {required int row, required int column, required int rows, required int columns}) async {
+    if (!isOwner || !_running) return;
+    await _sendSignal(
+      recipient: participant,
+      type: 'wall_layout',
+      payload: {'row': row, 'column': column, 'rows': rows, 'columns': columns},
+    );
   }
 
   Future<void> sendPointer(double x, double y, bool visible) async {
@@ -231,7 +242,15 @@ class MultiWallStream {
       return;
     }
 
-    if (type == 'pointer') {
+    if (type == 'wall_layout') {
+      final row = payload['row'];
+      final column = payload['column'];
+      final rows = payload['rows'];
+      final columns = payload['columns'];
+      if (row is num && column is num && rows is num && columns is num && rows > 0 && columns > 0) {
+        onWallLayout?.call(row.toInt(), column.toInt(), rows.toInt(), columns.toInt());
+      }
+    } else if (type == 'pointer') {
       final x = payload['x'];
       final y = payload['y'];
       if (x is num && y is num) onPointer?.call(x.toDouble().clamp(0.0, 1.0), y.toDouble().clamp(0.0, 1.0), payload['visible'] == true);
