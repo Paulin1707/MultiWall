@@ -54,15 +54,21 @@ class MultiWallStream {
       if (!permitted) {
         permitted = await FlutterBackground.initialize(androidConfig: config);
       }
-      if (permitted && !FlutterBackground.isBackgroundExecutionEnabled) {
-        await FlutterBackground.enableBackgroundExecution();
-      }
     }
 
+    // Android requires the user's screen-capture consent before starting a
+    // mediaProjection foreground service on recent Android versions.
     _localStream = await navigator.mediaDevices.getDisplayMedia({
       'video': true,
       'audio': false,
     });
+
+    if (WebRTC.platformIsAndroid &&
+        permitted &&
+        !FlutterBackground.isBackgroundExecutionEnabled) {
+      await FlutterBackground.enableBackgroundExecution();
+    }
+
     _running = true;
     _poller = Timer.periodic(const Duration(seconds: 1), (_) => _pollSignals());
     onStatus?.call('Capture d’écran active');
