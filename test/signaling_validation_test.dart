@@ -11,7 +11,7 @@ void main() {
       expect(SignalingValidation.isValidDescription(
         {'sdp': '', 'type': 'offer'}, expectedType: 'offer'), isFalse);
       expect(SignalingValidation.isValidDescription(
-        {'sdp': 'x' * (1024 * 1024 + 1), 'type': 'offer'}, expectedType: 'offer'), isFalse);
+        {'sdp': List.filled(1024 * 1024 + 1, 'x').join(), 'type': 'offer'}, expectedType: 'offer'), isFalse);
     });
 
     test('rejects malformed and oversized ICE candidates', () {
@@ -20,7 +20,7 @@ void main() {
         'sdpMid': '0', 'sdpMLineIndex': 0,
       }), isTrue);
       expect(SignalingValidation.isValidCandidate({'candidate': ''}), isFalse);
-      expect(SignalingValidation.isValidCandidate({'candidate': 'x' * 8193}), isFalse);
+      expect(SignalingValidation.isValidCandidate({'candidate': List.filled(8193, 'x').join()}), isFalse);
       expect(SignalingValidation.isValidCandidate({
         'candidate': 'candidate', 'sdpMLineIndex': double.infinity,
       }), isFalse);
