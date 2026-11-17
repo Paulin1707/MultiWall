@@ -1,7 +1,12 @@
 
+import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'multiwall_stream.dart';
 
 const String supabaseUrl =
     'https://cerzkniqycnggirvfzqv.supabase.co';
@@ -14,6 +19,24 @@ const Color panel = Color(0xFF151F32);
 const Color blue = Color(0xFF3478F6);
 const Color cyan = Color(0xFF36C8E8);
 const Color muted = Color(0xFF9AA9BF);
+
+/// Stable random identifier for this installation, used only to limit
+/// repeated invalid session-code attempts. It is not an authentication secret.
+Future<String> getOrCreateMultiWallClientKey() async {
+  const storageKey = 'multiwall_client_key_v1';
+  final preferences = await SharedPreferences.getInstance();
+  final existing = preferences.getString(storageKey);
+  if (existing != null && existing.length == 64 &&
+      RegExp(r'^[a-f0-9]+').hasMatch(existing)) {
+    return existing;
+  }
+  final random = math.Random.secure();
+  final generated = List<int>.generate(32, (_) => random.nextInt(256))
+      .map((value) => value.toRadixString(16).padLeft(2, '0'))
+      .join();
+  await preferences.setString(storageKey, generated);
+  return generated;
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -143,6 +166,7 @@ class _HomePageState extends State<HomePage> {
             sessionId: sessionId,
             code: code,
             ownerToken: ownerToken,
+            displayMode: displayMode,
           ),
         ),
       );
@@ -166,22 +190,37 @@ class _HomePageState extends State<HomePage> {
     setState(() => loading = true);
 
     try {
+      final clientKey = await getOrCreateMultiWallClientKey();
       final result = await Supabase.instance.client.rpc(
         'request_multiwall_join',
         params: {
           'p_code': code,
           'p_device_name': 'Appareil Android',
           'p_device_type': 'phone',
+          'p_client_key': clientKey,
         },
       );
 
       final data = asMap(result);
-      final status = data['status']?.toString();
-
-      message(
-        status == null
-            ? 'Demande envoyée. Attends la validation.'
-            : 'Demande envoyée : $status',
+      final status = data['status']?.toString() ?? 'pending';
+      if (status == 'error') {
+        throw Exception(data['message']?.toString() ?? 'Code invalide ou session indisponible.');
+      }
+      final participantId = data['participant_id']?.toString() ?? '';
+      final sessionId = data['session_id']?.toString() ?? '';
+      if (participantId.isEmpty || sessionId.isEmpty) {
+        throw Exception('Le serveur n’a pas retourné les identifiants nécessaires.');
+      }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ReceiverPage(
+            sessionId: sessionId,
+            participantId: participantId,
+            initialStatus: status,
+          ),
+        ),
       );
     } catch (e) {
       message('Erreur de connexion : $e');
@@ -493,12 +532,14 @@ class SessionPage extends StatefulWidget {
   final String sessionId;
   final String code;
   final String ownerToken;
+  final String displayMode;
 
   const SessionPage({
     super.key,
     required this.sessionId,
     required this.code,
     required this.ownerToken,
+    required this.displayMode,
   });
 
   @override
@@ -509,11 +550,236 @@ class _SessionPageState extends State<SessionPage> {
   List<Map<String, dynamic>> participants = [];
   bool loading = false;
   bool closing = false;
+  bool capturing = false;
+  bool pointerEnabled = false;
+  String streamStatus = 'Partage non démarré';
+  MultiWallStream? stream;
+  final Set<String> offeredParticipants = {};
+  String? lastWallLayoutSignature;
+  int wallRowsSetting = 2;
+  int wallColumnsSetting = 2;
+  Timer? participantPoller;
 
   @override
   void initState() {
     super.initState();
     loadParticipants();
+    participantPoller = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted && !loading && !closing) loadParticipants();
+    });
+  }
+
+  @override
+  void dispose() {
+    participantPoller?.cancel();
+    final activeStream = stream;
+    if (activeStream != null) {
+      activeStream.stop();
+    }
+    super.dispose();
+  }
+
+  Future<void> startScreenShare() async {
+    if (capturing) return;
+    setState(() {
+      capturing = true;
+      streamStatus = 'Demande d’autorisation Android...';
+    });
+    MultiWallStream? transport;
+    try {
+      transport = MultiWallStream(
+        sessionId: widget.sessionId,
+        ownerToken: widget.ownerToken,
+        isOwner: true,
+        onStatus: (value) {
+          if (mounted) setState(() => streamStatus = value);
+        },
+      );
+      await transport.startOwnerCapture();
+      stream = transport;
+      await loadParticipants();
+      await offerAcceptedParticipants();
+    } catch (e) {
+      // A failure after Android grants capture permission must not leave the
+      // MediaProjection stream or foreground service running in the background.
+      if (stream == transport) stream = null;
+      try {
+        await transport?.stop();
+      } catch (_) {
+        // Preserve the original startup error for the user.
+      }
+      if (mounted) setState(() => streamStatus = 'Erreur de capture : $e');
+    } finally {
+      if (mounted) setState(() => capturing = false);
+    }
+  }
+
+  void updatePointer(Offset localPosition, Size areaSize) {
+    final active = stream;
+    if (active == null || !pointerEnabled || areaSize.width <= 0 || areaSize.height <= 0) return;
+    final x = (localPosition.dx / areaSize.width).clamp(0.0, 1.0);
+    final y = (localPosition.dy / areaSize.height).clamp(0.0, 1.0);
+    active.sendPointer(x.toDouble(), y.toDouble(), true);
+  }
+
+  Widget pointerController() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(child: Text('Pointeur de présentation', style: TextStyle(fontWeight: FontWeight.bold))),
+          Switch(value: pointerEnabled, onChanged: stream == null ? null : (value) {
+            setState(() => pointerEnabled = value);
+            if (!value) stream?.sendPointer(0, 0, false);
+          }),
+        ]),
+        const Text('Active le pointeur puis touche ou fais glisser dans la zone pour montrer un élément aux appareils connectés.', style: TextStyle(color: muted, fontSize: 12)),
+        if (pointerEnabled) ...[
+          const SizedBox(height: 10),
+          LayoutBuilder(builder: (context, constraints) {
+            final area = Size(constraints.maxWidth, 170);
+            return GestureDetector(
+              onPanDown: (details) => updatePointer(details.localPosition, area),
+              onPanUpdate: (details) => updatePointer(details.localPosition, area),
+              child: Container(
+                width: double.infinity, height: area.height,
+                decoration: BoxDecoration(color: const Color(0xFF080D16), borderRadius: BorderRadius.circular(10), border: Border.all(color: cyan)),
+                child: const Center(child: Text('Zone de pointage', style: TextStyle(color: Colors.white54))),
+              ),
+            );
+          }),
+        ],
+      ]),
+    );
+  }
+
+  Future<void> stopScreenShare() async {
+    final active = stream;
+    if (active == null) return;
+    setState(() => streamStatus = 'Arrêt du partage...');
+    try {
+      await active.stop();
+      stream = null;
+      offeredParticipants.clear();
+      lastWallLayoutSignature = null;
+      if (mounted) {
+        setState(() => streamStatus = 'Partage arrêté');
+        message('Le partage d’écran est arrêté.');
+      }
+    } catch (e) {
+      if (mounted) setState(() => streamStatus = 'Erreur à l’arrêt : $e');
+    }
+  }
+
+  Widget wallLayoutControls() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: panel,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Disposition du mur vidéo',
+              style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          const Text('Choisis le nombre de lignes et de colonnes. Les lignes s’ajustent si davantage d’appareils rejoignent la session.',
+              style: TextStyle(color: muted, fontSize: 12)),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: DropdownButtonFormField<int>(
+              value: wallRowsSetting,
+              decoration: const InputDecoration(labelText: 'Lignes', border: OutlineInputBorder()),
+              dropdownColor: panel,
+              items: List.generate(4, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => wallRowsSetting = value);
+                offerAcceptedParticipants();
+              },
+            )),
+            const SizedBox(width: 12),
+            Expanded(child: DropdownButtonFormField<int>(
+              value: wallColumnsSetting,
+              decoration: const InputDecoration(labelText: 'Colonnes', border: OutlineInputBorder()),
+              dropdownColor: panel,
+              items: List.generate(4, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() => wallColumnsSetting = value);
+                offerAcceptedParticipants();
+              },
+            )),
+          ]),
+          const SizedBox(height: 8),
+          Text('Grille choisie : ${wallRowsSetting} × ${wallColumnsSetting}',
+              style: const TextStyle(color: cyan, fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> offerAcceptedParticipants() async {
+    final activeStream = stream;
+    if (activeStream == null) return;
+    final accepted = participants
+        .where((p) => p['status']?.toString() == 'accepted')
+        .toList();
+    final columns = widget.displayMode == 'video_wall' ? wallColumnsSetting : 1;
+    final minimumRows = accepted.isEmpty ? 1 : (accepted.length + columns - 1) ~/ columns;
+    final rows = widget.displayMode == 'video_wall'
+        ? (wallRowsSetting > minimumRows ? wallRowsSetting : minimumRows)
+        : 1;
+    final participantIds = accepted
+        .map((p) => p['id']?.toString() ??
+            p['participant_id']?.toString() ?? '')
+        .toList();
+    final layoutSignature = '${rows}x${columns}:${participantIds.join(',')}';
+    final layoutChanged = widget.displayMode == 'video_wall' &&
+        layoutSignature != lastWallLayoutSignature;
+
+    // Re-publish the complete layout whenever membership changes so that
+    // already-connected receivers are moved to their new tile as well.
+    if (layoutChanged) {
+      var allLayoutsSent = true;
+      for (var index = 0; index < accepted.length; index++) {
+        final id = participantIds[index];
+        if (id.isEmpty) {
+          allLayoutsSent = false;
+          continue;
+        }
+        try {
+          await activeStream.sendWallLayout(
+            id,
+            row: index ~/ columns,
+            column: index % columns,
+            rows: rows,
+            columns: columns,
+          );
+        } catch (e) {
+          allLayoutsSent = false;
+          if (mounted) {
+            setState(() => streamStatus = 'Disposition du mur vidéo : $e');
+          }
+        }
+      }
+      if (allLayoutsSent) lastWallLayoutSignature = layoutSignature;
+    }
+
+    for (var index = 0; index < accepted.length; index++) {
+      final id = participantIds[index];
+      if (id.isEmpty || offeredParticipants.contains(id)) continue;
+      try {
+        await activeStream.offerTo(id);
+        offeredParticipants.add(id);
+      } catch (e) {
+        offeredParticipants.remove(id);
+        if (mounted) setState(() => streamStatus = 'Connexion appareil : $e');
+      }
+    }
   }
 
   void message(String text) {
@@ -538,7 +804,29 @@ class _SessionPageState extends State<SessionPage> {
         },
       );
 
-      participants = asMapList(result);
+      final refreshedParticipants = asMapList(result);
+      final acceptedIds = refreshedParticipants
+          .where((p) => p['status']?.toString() == 'accepted')
+          .map((p) => p['id']?.toString() ??
+              p['participant_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      // Close WebRTC peers for receivers that were removed, rejected, or
+      // marked disconnected by the session backend.
+      final noLongerAccepted = offeredParticipants
+          .where((id) => !acceptedIds.contains(id))
+          .toList();
+      for (final id in noLongerAccepted) {
+        await stream?.removeParticipant(id);
+        offeredParticipants.remove(id);
+      }
+
+      participants = refreshedParticipants;
+      if (noLongerAccepted.isNotEmpty) {
+        lastWallLayoutSignature = null;
+      }
+      await offerAcceptedParticipants();
     } catch (e) {
       message('Erreur de chargement : $e');
     } finally {
@@ -588,6 +876,8 @@ class _SessionPageState extends State<SessionPage> {
       );
 
       if (!mounted) return;
+      await stream?.stop();
+      stream = null;
       Navigator.pop(context);
     } catch (e) {
       message('Impossible de fermer la session : $e');
@@ -741,6 +1031,56 @@ class _SessionPageState extends State<SessionPage> {
                   ],
                 ),
               ),
+              const SizedBox(height: 22),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: panel,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Partage réel de l’écran',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 7),
+                    Text(streamStatus,
+                        style: const TextStyle(color: muted, fontSize: 12)),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: capturing
+                            ? null
+                            : stream == null
+                                ? startScreenShare
+                                : stopScreenShare,
+                        icon: Icon(stream == null ? Icons.screen_share : Icons.stop_circle),
+                        label: Text(
+                          capturing
+                              ? 'Démarrage...'
+                              : stream == null
+                                  ? 'Démarrer le partage'
+                                  : 'Arrêter le partage',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: stream == null ? blue : Colors.redAccent,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.displayMode == 'video_wall') ...[
+                const SizedBox(height: 14),
+                wallLayoutControls(),
+              ],
+              if (stream != null) ...[
+                const SizedBox(height: 14),
+                pointerController(),
+              ],
               const SizedBox(height: 25),
               Row(
                 children: [
@@ -828,6 +1168,176 @@ class _SessionPageState extends State<SessionPage> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+
+class ReceiverPage extends StatefulWidget {
+  final String sessionId;
+  final String participantId;
+  final String initialStatus;
+
+  const ReceiverPage({
+    super.key,
+    required this.sessionId,
+    required this.participantId,
+    required this.initialStatus,
+  });
+
+  @override
+  State<ReceiverPage> createState() => _ReceiverPageState();
+}
+
+class _ReceiverPageState extends State<ReceiverPage> {
+  final RTCVideoRenderer renderer = RTCVideoRenderer();
+  MultiWallStream? transport;
+  String status = 'En attente de validation du propriétaire...';
+  bool initialized = false;
+  Offset? pointerPosition;
+  bool pointerVisible = false;
+  int wallRow = 0;
+  int wallColumn = 0;
+  int wallRows = 1;
+  int wallColumns = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    initializeReceiver();
+  }
+
+  Future<void> initializeReceiver() async {
+    status = widget.initialStatus == 'accepted'
+        ? 'Appareil accepté. Connexion au partage...'
+        : 'Demande envoyée. En attente de validation...';
+    try {
+      await renderer.initialize();
+      transport = MultiWallStream(
+        sessionId: widget.sessionId,
+        ownerToken: '',
+        isOwner: false,
+        participantId: widget.participantId,
+        onWallLayout: (row, column, rows, columns) {
+          if (mounted) setState(() {
+            wallRow = row;
+            wallColumn = column;
+            wallRows = rows;
+            wallColumns = columns;
+            status = 'Position du mur vidéo reçue';
+          });
+        },
+        onPointer: (x, y, visible) {
+          if (mounted) setState(() { pointerPosition = Offset(x, y); pointerVisible = visible; });
+        },
+        onRemoteStream: (mediaStream) {
+          renderer.srcObject = mediaStream;
+          if (mounted) setState(() => status = 'Écran reçu en direct');
+        },
+        onStatus: (value) {
+          if (mounted) setState(() => status = value);
+        },
+      );
+      await transport!.startReceiver();
+      if (mounted) setState(() => initialized = true);
+    } catch (e) {
+      if (mounted) setState(() => status = 'Connexion impossible : $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    transport?.stop();
+    renderer.srcObject = null;
+    renderer.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Réception MultiWall')),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                color: Colors.black,
+                child: initialized && renderer.srcObject != null
+                    ? LayoutBuilder(builder: (context, constraints) {
+                        final sourceAspect = renderer.videoWidth > 0 && renderer.videoHeight > 0
+                            ? renderer.videoWidth / renderer.videoHeight
+                            : constraints.maxWidth / constraints.maxHeight;
+                        final tileAspect = sourceAspect * wallRows / wallColumns;
+                        final pointerX = pointerPosition == null
+                            ? -1.0
+                            : pointerPosition!.dx * wallColumns - wallColumn;
+                        final pointerY = pointerPosition == null
+                            ? -1.0
+                            : pointerPosition!.dy * wallRows - wallRow;
+                        final pointerInTile = pointerVisible &&
+                            pointerPosition != null &&
+                            pointerX >= 0 && pointerX <= 1 &&
+                            pointerY >= 0 && pointerY <= 1;
+                        return Center(
+                          child: AspectRatio(
+                            aspectRatio: tileAspect,
+                            child: ClipRect(
+                              child: LayoutBuilder(builder: (context, tileConstraints) {
+                                final tileWidth = tileConstraints.maxWidth;
+                                final tileHeight = tileConstraints.maxHeight;
+                                return Stack(clipBehavior: Clip.hardEdge, children: [
+                                  Positioned(
+                                    left: -wallColumn * tileWidth,
+                                    top: -wallRow * tileHeight,
+                                    width: tileWidth * wallColumns,
+                                    height: tileHeight * wallRows,
+                                    child: RTCVideoView(
+                                      renderer,
+                                      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+                                    ),
+                                  ),
+                                  if (pointerInTile)
+                                    Positioned(
+                                      left: (pointerX * tileWidth - 14).clamp(0.0, tileWidth - 28).toDouble(),
+                                      top: (pointerY * tileHeight - 14).clamp(0.0, tileHeight - 28).toDouble(),
+                                      child: IgnorePointer(child: Container(
+                                        width: 28, height: 28,
+                                        decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.95), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 5)]),
+                                      )),
+                                    ),
+                                ]);
+                              }),
+                            ),
+                          ),
+                        );
+                      })
+                    : const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.connected_tv, size: 54, color: cyan),
+                            SizedBox(height: 14),
+                            Text('En attente du partage...', style: TextStyle(color: Colors.white70)),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.circle, color: cyan, size: 10),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(status, style: const TextStyle(color: muted))),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
