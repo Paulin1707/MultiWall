@@ -523,6 +523,7 @@ class _SessionPageState extends State<SessionPage> {
   bool loading = false;
   bool closing = false;
   bool capturing = false;
+  bool pointerEnabled = false;
   String streamStatus = 'Partage non démarré';
   MultiWallStream? stream;
   final Set<String> offeredParticipants = {};
@@ -571,6 +572,46 @@ class _SessionPageState extends State<SessionPage> {
     } finally {
       if (mounted) setState(() => capturing = false);
     }
+  }
+
+  void updatePointer(Offset localPosition, Size areaSize) {
+    final active = stream;
+    if (active == null || !pointerEnabled || areaSize.width <= 0 || areaSize.height <= 0) return;
+    final x = (localPosition.dx / areaSize.width).clamp(0.0, 1.0);
+    final y = (localPosition.dy / areaSize.height).clamp(0.0, 1.0);
+    active.sendPointer(x, y, true);
+  }
+
+  Widget pointerController() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: panel, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white12)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Expanded(child: Text('Pointeur de présentation', style: TextStyle(fontWeight: FontWeight.bold))),
+          Switch(value: pointerEnabled, onChanged: stream == null ? null : (value) {
+            setState(() => pointerEnabled = value);
+            if (!value) stream?.sendPointer(0, 0, false);
+          }),
+        ]),
+        const Text('Active le pointeur puis touche ou fais glisser dans la zone pour montrer un élément aux appareils connectés.', style: TextStyle(color: muted, fontSize: 12)),
+        if (pointerEnabled) ...[
+          const SizedBox(height: 10),
+          LayoutBuilder(builder: (context, constraints) {
+            final area = Size(constraints.maxWidth, 170);
+            return GestureDetector(
+              onPanDown: (details) => updatePointer(details.localPosition, area),
+              onPanUpdate: (details) => updatePointer(details.localPosition, area),
+              child: Container(
+                width: double.infinity, height: area.height,
+                decoration: BoxDecoration(color: const Color(0xFF080D16), borderRadius: BorderRadius.circular(10), border: Border.all(color: cyan)),
+                child: const Center(child: Text('Zone de pointage', style: TextStyle(color: Colors.white54))),
+              ),
+            );
+          }),
+        ],
+      ]),
+    );
   }
 
   Future<void> stopScreenShare() async {
@@ -880,6 +921,10 @@ class _SessionPageState extends State<SessionPage> {
                   ],
                 ),
               ),
+              if (stream != null) ...[
+                const SizedBox(height: 14),
+                pointerController(),
+              ],
               const SizedBox(height: 25),
               Row(
                 children: [
@@ -995,6 +1040,8 @@ class _ReceiverPageState extends State<ReceiverPage> {
   MultiWallStream? transport;
   String status = 'En attente de validation du propriétaire...';
   bool initialized = false;
+  Offset? pointerPosition;
+  bool pointerVisible = false;
 
   @override
   void initState() {
@@ -1013,6 +1060,9 @@ class _ReceiverPageState extends State<ReceiverPage> {
         ownerToken: '',
         isOwner: false,
         participantId: widget.participantId,
+        onPointer: (x, y, visible) {
+          if (mounted) setState(() { pointerPosition = Offset(x, y); pointerVisible = visible; });
+        },
         onRemoteStream: (mediaStream) {
           renderer.srcObject = mediaStream;
           if (mounted) setState(() => status = 'Écran reçu en direct');
@@ -1048,7 +1098,20 @@ class _ReceiverPageState extends State<ReceiverPage> {
                 width: double.infinity,
                 color: Colors.black,
                 child: initialized && renderer.srcObject != null
-                    ? RTCVideoView(renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain)
+                    ? LayoutBuilder(builder: (context, constraints) {
+                        return Stack(children: [
+                          Positioned.fill(child: RTCVideoView(renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain)),
+                          if (pointerVisible && pointerPosition != null)
+                            Positioned(
+                              left: (pointerPosition!.dx * constraints.maxWidth - 14).clamp(0.0, constraints.maxWidth - 28),
+                              top: (pointerPosition!.dy * constraints.maxHeight - 14).clamp(0.0, constraints.maxHeight - 28),
+                              child: IgnorePointer(child: Container(
+                                width: 28, height: 28,
+                                decoration: BoxDecoration(color: Colors.red.withValues(alpha: 0.95), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2), boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 5)]),
+                              )),
+                            ),
+                        ]);
+                      })
                     : const Center(
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
