@@ -273,8 +273,8 @@ class MultiWallStream {
       }
     } else if (type == 'pointer') {
       if (SignalingValidation.isValidPointer(payload)) {
-        final x = (payload['x'] as num).toDouble().clamp(0.0, 1.0);
-        final y = (payload['y'] as num).toDouble().clamp(0.0, 1.0);
+        final x = (payload['x'] as num).toDouble().clamp(0.0, 1.0).toDouble();
+        final y = (payload['y'] as num).toDouble().clamp(0.0, 1.0).toDouble();
         onPointer?.call(x, y, payload['visible'] == true);
       }
     } else if (type == 'offer') {
