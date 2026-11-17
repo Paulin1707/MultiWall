@@ -69,12 +69,6 @@ jobs:
           print("Configuration Android terminée.")
           PY
 
-      - name: Add app dependencies
-        run: |
-          flutter pub add supabase_flutter
-          flutter pub add flutter_webrtc
-          flutter pub add flutter_background
-
       - name: Get dependencies
         run: flutter pub get
 
