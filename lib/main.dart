@@ -28,18 +28,7 @@ Future<String> getOrCreateMultiWallClientKey() async {
   final existing = preferences.getString(storageKey);
   if (existing != null &&
       existing.length == 64 &&
-      RegExp(r'^[a-f0-9]+$').hasMatch(existing)) {
-    return existing;
-  }
-
-  final random = math.Random.secure();
-  final generated = List<int>.generate(32, (_) => random.nextInt(256))
-      .map((value) => value.toRadixString(16).padLeft(2, '0'))
-      .join();
-  await preferences.setString(storageKey, generated);
-  return generated;
-}
-
+      RegExp(r'^[a-f0-9]+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
