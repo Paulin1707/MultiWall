@@ -21,7 +21,11 @@ class SignalingValidation {
         candidate.length <= 8192 &&
         (mid == null || (mid is String && mid.length <= 256)) &&
         (line == null ||
-            (line is num && line.isFinite && line >= 0 && line <= 1000));
+            (line is num &&
+                line.isFinite &&
+                line == line.truncateToDouble() &&
+                line >= 0 &&
+                line <= 1000));
   }
 
   static bool isValidWallLayout(Map<String, dynamic> payload) {
@@ -37,6 +41,10 @@ class SignalingValidation {
         column.isFinite &&
         rows.isFinite &&
         columns.isFinite &&
+        row == row.truncateToDouble() &&
+        column == column.truncateToDouble() &&
+        rows == rows.truncateToDouble() &&
+        columns == columns.truncateToDouble() &&
         rows >= 1 &&
         rows <= 8 &&
         columns >= 1 &&
