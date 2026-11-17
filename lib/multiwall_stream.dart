@@ -247,7 +247,20 @@ class MultiWallStream {
       final column = payload['column'];
       final rows = payload['rows'];
       final columns = payload['columns'];
-      if (row is num && column is num && rows is num && columns is num && rows > 0 && columns > 0) {
+      // Treat signaling payloads as untrusted input. Bound the grid size and
+      // reject coordinates outside the declared grid before they reach layout.
+      if (row is num &&
+          column is num &&
+          rows is num &&
+          columns is num &&
+          rows >= 1 &&
+          rows <= 8 &&
+          columns >= 1 &&
+          columns <= 8 &&
+          row >= 0 &&
+          row < rows &&
+          column >= 0 &&
+          column < columns) {
         onWallLayout?.call(row.toInt(), column.toInt(), rows.toInt(), columns.toInt());
       }
     } else if (type == 'pointer') {
